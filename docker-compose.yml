@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ehr-core-postgres
+    environment:
+      POSTGRES_DB: ehr_core
+      POSTGRES_USER: ehr_core
+      POSTGRES_PASSWORD: ehr_core_dev
+    ports:
+      - "54328:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ehr_core -d ehr_core"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - ehr-core-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  ehr-core-postgres-data:
