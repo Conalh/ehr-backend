@@ -22,6 +22,10 @@ management:
       probes:
         enabled: true
 
+ehr:
+  security:
+    dev-jwt-secret: ${EHR_DEV_JWT_SECRET:ehr-core-local-dev-jwt-secret-32-byte-minimum}
+
 logging:
   pattern:
     level: "%5p [correlationId:%X{correlationId:-none}]"

@@ -3,12 +3,22 @@ package dev.ehr.runtime
 import org.hamcrest.Matchers.matchesPattern
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
+import org.springframework.boot.autoconfigure.security.servlet.SecurityFilterAutoConfiguration
+import org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 
-@WebMvcTest(controllers = [HealthController::class])
+@WebMvcTest(
+    controllers = [HealthController::class],
+    excludeAutoConfiguration = [
+        SecurityAutoConfiguration::class,
+        SecurityFilterAutoConfiguration::class,
+        UserDetailsServiceAutoConfiguration::class,
+    ],
+)
 @Import(CorrelationIdFilter::class)
 class CorrelationIdFilterTest {
     @Autowired
