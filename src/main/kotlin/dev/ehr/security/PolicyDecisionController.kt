@@ -1,11 +1,14 @@
 package dev.ehr.security
 
+import dev.ehr.identity.OrganizationId
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import java.util.UUID
 
 @RestController
 @RequestMapping("/api/v1/security")
@@ -14,15 +17,21 @@ class PolicyDecisionController(
     private val auditEventService: AuditEventService,
 ) {
     @GetMapping("/policy-check")
-    fun policyCheck(authentication: Authentication): PolicyDecisionResponse {
+    fun policyCheck(
+        authentication: Authentication,
+        @RequestParam organizationId: UUID?,
+    ): PolicyDecisionResponse {
         val principal = authentication.principal as? SecurityPrincipal
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
+        val requestedOrganizationId = organizationId
+            ?.let(::OrganizationId)
+            ?: principal.organization.organizationId
         val decision = policyEvaluator.evaluate(
             principal = principal,
             request = PolicyEvaluationRequest(
                 resourceType = PolicyResourceType.ORGANIZATION,
                 operation = PolicyOperation.READ,
-                organizationId = principal.organization.organizationId,
+                organizationId = requestedOrganizationId,
             ),
         )
         auditEventService.recordPolicyDecision(decision)

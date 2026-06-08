@@ -126,6 +126,8 @@ class PolicyEvaluatorTest {
 
         assertFalse(decision.allowed)
         assertEquals(requestedOrganizationId, decision.organizationId)
+        assertEquals(emptyList<MembershipRole>(), decision.roleBasis)
+        assertEquals(emptyList<SecurityScope>(), decision.scopeBasis)
         assertEquals(PolicyReasonCode.ORGANIZATION_MISMATCH, decision.reasonCode)
     }
 

@@ -40,6 +40,22 @@ class MembershipRepository(
             id.value,
         ).singleOrNull()
 
+    fun findById(
+        tenantScope: TenantScope,
+        id: MembershipId,
+    ): Membership? =
+        jdbcTemplate.query(
+            """
+            select id, organization_id, user_id, practitioner_id, status, created_at, updated_at
+            from memberships
+            where organization_id = ?
+              and id = ?
+            """.trimIndent(),
+            rowMapper,
+            tenantScope.organizationId.value,
+            id.value,
+        ).singleOrNull()
+
     fun findByOrganizationAndUser(
         organizationId: OrganizationId,
         userId: UserId,
@@ -103,6 +119,24 @@ class MembershipRepository(
             order by role
             """.trimIndent(),
             String::class.java,
+            membershipId.value,
+        ).map(MembershipRole::fromDb)
+
+    fun findRoles(
+        tenantScope: TenantScope,
+        membershipId: MembershipId,
+    ): List<MembershipRole> =
+        jdbcTemplate.queryForList(
+            """
+            select mr.role
+            from membership_roles mr
+            join memberships m on m.id = mr.membership_id
+            where m.organization_id = ?
+              and mr.membership_id = ?
+            order by mr.role
+            """.trimIndent(),
+            String::class.java,
+            tenantScope.organizationId.value,
             membershipId.value,
         ).map(MembershipRole::fromDb)
 

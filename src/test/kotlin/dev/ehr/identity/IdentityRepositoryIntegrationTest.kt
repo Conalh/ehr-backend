@@ -101,6 +101,50 @@ class IdentityRepositoryIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `organization bound membership reads fail closed across organizations`() {
+        val fixtures = IdentityTestFixtures(
+            organizationRepository = organizationRepository,
+            userRepository = userRepository,
+            membershipRepository = membershipRepository,
+        ).createTwoOrganizationsUsersAndMemberships()
+        val northMembership = membershipRepository.findByOrganizationAndUser(
+            organizationId = fixtures.north.id,
+            userId = fixtures.clinician.id,
+        )!!
+
+        assertEquals(
+            northMembership,
+            membershipRepository.findById(TenantScope(fixtures.north.id), northMembership.id),
+        )
+        assertEquals(
+            null,
+            membershipRepository.findById(TenantScope(fixtures.south.id), northMembership.id),
+        )
+    }
+
+    @Test
+    fun `organization bound membership role reads fail closed across organizations`() {
+        val fixtures = IdentityTestFixtures(
+            organizationRepository = organizationRepository,
+            userRepository = userRepository,
+            membershipRepository = membershipRepository,
+        ).createTwoOrganizationsUsersAndMemberships()
+        val northMembership = membershipRepository.findByOrganizationAndUser(
+            organizationId = fixtures.north.id,
+            userId = fixtures.clinician.id,
+        )!!
+
+        assertEquals(
+            listOf(MembershipRole.CLINICIAN),
+            membershipRepository.findRoles(TenantScope(fixtures.north.id), northMembership.id),
+        )
+        assertEquals(
+            emptyList<MembershipRole>(),
+            membershipRepository.findRoles(TenantScope(fixtures.south.id), northMembership.id),
+        )
+    }
+
+    @Test
     fun `cross org fixture data remains distinct through organization aware repository methods`() {
         val fixtures = IdentityTestFixtures(
             organizationRepository = organizationRepository,
@@ -116,6 +160,28 @@ class IdentityRepositoryIntegrationTest : PostgresIntegrationTest() {
         assertNotEquals(northMemberships.single().organizationId, southMemberships.single().organizationId)
         assertTrue(northMemberships.all { it.organizationId == fixtures.north.id })
         assertTrue(southMemberships.all { it.organizationId == fixtures.south.id })
+    }
+
+    @Test
+    fun `tenant scoped identity column nullability is explicit`() {
+        val columns = jdbcTemplate.query(
+            """
+            select table_name, column_name, is_nullable
+            from information_schema.columns
+            where table_schema = 'public'
+              and (
+                (table_name = 'memberships' and column_name = 'organization_id')
+                or (table_name = 'oauth_clients' and column_name = 'organization_id')
+              )
+            order by table_name, column_name
+            """.trimIndent(),
+            { rs, _ ->
+                "${rs.getString("table_name")}.${rs.getString("column_name")}" to rs.getString("is_nullable")
+            },
+        ).toMap()
+
+        assertEquals("NO", columns["memberships.organization_id"])
+        assertEquals("YES", columns["oauth_clients.organization_id"])
     }
 
     @Test

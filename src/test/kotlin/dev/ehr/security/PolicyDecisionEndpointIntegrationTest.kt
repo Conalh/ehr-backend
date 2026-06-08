@@ -150,6 +150,43 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
         assertEquals("INSUFFICIENT_SCOPE", auditRow.policyReasonCode)
     }
 
+    @Test
+    fun `policy check audits authenticated organization mismatch decisions`() {
+        val correlationId = "policy-deny-org-${UUID.randomUUID()}"
+        val fixture = createAuthenticatedMember(
+            role = MembershipRole.ORG_ADMIN,
+            scopes = "user/*.read",
+        )
+        val otherOrganization = organizationRepository.create(
+            slug = "policy-other-org-${UUID.randomUUID()}",
+            displayName = "Policy Other Org",
+        )
+
+        mockMvc.get("/api/v1/security/policy-check") {
+            param("organizationId", otherOrganization.id.value.toString())
+            header("Authorization", "Bearer ${fixture.token}")
+            header("X-Correlation-Id", correlationId)
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.allowed") { value(false) }
+            jsonPath("$.organizationId") { value(otherOrganization.id.value.toString()) }
+            jsonPath("$.roleBasis") { isEmpty() }
+            jsonPath("$.scopeBasis") { isEmpty() }
+            jsonPath("$.reasonCode") { value("ORGANIZATION_MISMATCH") }
+        }
+
+        val auditRow = auditEventByCorrelationId(correlationId)
+        assertEquals(otherOrganization.id.value.toString(), auditRow.organizationId)
+        assertEquals(fixture.userId, auditRow.subjectUserId)
+        assertEquals("ORGANIZATION", auditRow.resourceType)
+        assertEquals("AUTHORIZATION_DENIED", auditRow.operation)
+        assertEquals("DENIED", auditRow.outcome)
+        assertEquals("policy-spine-v1", auditRow.policyVersion)
+        assertEquals("ORGANIZATION_MISMATCH", auditRow.policyReasonCode)
+        assertEquals(correlationId, auditRow.correlationId)
+        assertEquals("{}", auditRow.metadata)
+    }
+
     private fun createAuthenticatedMember(
         role: MembershipRole,
         scopes: String,

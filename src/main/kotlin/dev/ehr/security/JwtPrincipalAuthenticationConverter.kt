@@ -6,6 +6,7 @@ import dev.ehr.identity.Organization
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.OrganizationRepository
 import dev.ehr.identity.OrganizationStatus
+import dev.ehr.identity.TenantScope
 import dev.ehr.identity.UserRepository
 import dev.ehr.identity.UserStatus
 import org.springframework.core.convert.converter.Converter
@@ -40,7 +41,7 @@ class JwtPrincipalAuthenticationConverter(
             organizationId = organization.id,
             userId = user.id,
         ) ?: invalidToken("JWT subject is not an active member of the organization")
-        val roles = membershipRepository.findRoles(membership.id)
+        val roles = membershipRepository.findRoles(TenantScope(organization.id), membership.id)
         val scopes = extractScopes(jwt)
         val principal = SecurityPrincipal(
             subject = AuthenticatedSubject(
