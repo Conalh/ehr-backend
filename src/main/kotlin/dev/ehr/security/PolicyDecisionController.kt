@@ -11,6 +11,7 @@ import org.springframework.web.server.ResponseStatusException
 @RequestMapping("/api/v1/security")
 class PolicyDecisionController(
     private val policyEvaluator: PolicyEvaluator,
+    private val auditEventService: AuditEventService,
 ) {
     @GetMapping("/policy-check")
     fun policyCheck(authentication: Authentication): PolicyDecisionResponse {
@@ -24,6 +25,7 @@ class PolicyDecisionController(
                 organizationId = principal.organization.organizationId,
             ),
         )
+        auditEventService.recordPolicyDecision(decision)
 
         return decision.toResponse()
     }

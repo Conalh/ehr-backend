@@ -41,14 +41,21 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
 
     @Test
     fun `policy check rejects unauthenticated requests`() {
-        mockMvc.get("/api/v1/security/policy-check")
+        val correlationId = "policy-unauth-${UUID.randomUUID()}"
+
+        mockMvc.get("/api/v1/security/policy-check") {
+            header("X-Correlation-Id", correlationId)
+        }
             .andExpect {
                 status { isUnauthorized() }
             }
+
+        assertEquals(0, auditEventCountByCorrelationId(correlationId))
     }
 
     @Test
     fun `policy check returns allowed decision for admin member with compatible scope`() {
+        val correlationId = "policy-allow-${UUID.randomUUID()}"
         val fixture = createAuthenticatedMember(
             role = MembershipRole.ORG_ADMIN,
             scopes = "user/*.read",
@@ -56,6 +63,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.get("/api/v1/security/policy-check") {
             header("Authorization", "Bearer ${fixture.token}")
+            header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isOk() }
             jsonPath("$.allowed") { value(true) }
@@ -72,11 +80,22 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
             jsonPath("$.reasonCode") { value("ALLOWED") }
         }
 
-        assertEquals(0, auditEventCount())
+        val auditRow = auditEventByCorrelationId(correlationId)
+        assertEquals(fixture.organizationId, auditRow.organizationId)
+        assertEquals(fixture.userId, auditRow.subjectUserId)
+        assertEquals(null, auditRow.clientId)
+        assertEquals("ORGANIZATION", auditRow.resourceType)
+        assertEquals("READ", auditRow.operation)
+        assertEquals("SUCCESS", auditRow.outcome)
+        assertEquals("policy-spine-v1", auditRow.policyVersion)
+        assertEquals("ALLOWED", auditRow.policyReasonCode)
+        assertEquals(correlationId, auditRow.correlationId)
+        assertEquals("{}", auditRow.metadata)
     }
 
     @Test
     fun `policy check returns denied decision for member without enough role`() {
+        val correlationId = "policy-deny-role-${UUID.randomUUID()}"
         val fixture = createAuthenticatedMember(
             role = MembershipRole.STAFF,
             scopes = "user/*.read",
@@ -84,6 +103,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.get("/api/v1/security/policy-check") {
             header("Authorization", "Bearer ${fixture.token}")
+            header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isOk() }
             jsonPath("$.allowed") { value(false) }
@@ -92,11 +112,20 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
             jsonPath("$.reasonCode") { value("INSUFFICIENT_ROLE") }
         }
 
-        assertEquals(0, auditEventCount())
+        val auditRow = auditEventByCorrelationId(correlationId)
+        assertEquals(fixture.organizationId, auditRow.organizationId)
+        assertEquals(fixture.userId, auditRow.subjectUserId)
+        assertEquals("ORGANIZATION", auditRow.resourceType)
+        assertEquals("AUTHORIZATION_DENIED", auditRow.operation)
+        assertEquals("DENIED", auditRow.outcome)
+        assertEquals("policy-spine-v1", auditRow.policyVersion)
+        assertEquals("INSUFFICIENT_ROLE", auditRow.policyReasonCode)
+        assertEquals(correlationId, auditRow.correlationId)
     }
 
     @Test
     fun `policy check returns denied decision for admin member without compatible scope`() {
+        val correlationId = "policy-deny-scope-${UUID.randomUUID()}"
         val fixture = createAuthenticatedMember(
             role = MembershipRole.ORG_ADMIN,
             scopes = "patient/Patient.rs",
@@ -104,6 +133,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.get("/api/v1/security/policy-check") {
             header("Authorization", "Bearer ${fixture.token}")
+            header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isOk() }
             jsonPath("$.allowed") { value(false) }
@@ -112,7 +142,12 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
             jsonPath("$.reasonCode") { value("INSUFFICIENT_SCOPE") }
         }
 
-        assertEquals(0, auditEventCount())
+        val auditRow = auditEventByCorrelationId(correlationId)
+        assertEquals(fixture.organizationId, auditRow.organizationId)
+        assertEquals(fixture.userId, auditRow.subjectUserId)
+        assertEquals("AUTHORIZATION_DENIED", auditRow.operation)
+        assertEquals("DENIED", auditRow.outcome)
+        assertEquals("INSUFFICIENT_SCOPE", auditRow.policyReasonCode)
     }
 
     private fun createAuthenticatedMember(
@@ -147,8 +182,48 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
         )
     }
 
-    private fun auditEventCount(): Int =
-        jdbcTemplate.queryForObject("select count(*) from audit_events", Int::class.java)!!
+    private fun auditEventCountByCorrelationId(correlationId: String): Int =
+        jdbcTemplate.queryForObject(
+            "select count(*) from audit_events where correlation_id = ?",
+            Int::class.java,
+            correlationId,
+        )!!
+
+    private fun auditEventByCorrelationId(correlationId: String): PolicyAuditRow {
+        assertEquals(1, auditEventCountByCorrelationId(correlationId))
+        return jdbcTemplate.queryForObject(
+            """
+            select
+              organization_id::text,
+              subject_user_id::text,
+              client_id::text,
+              resource_type,
+              operation,
+              outcome,
+              policy_version,
+              policy_reason_code,
+              correlation_id,
+              metadata::text
+            from audit_events
+            where correlation_id = ?
+            """.trimIndent(),
+            { rs, _ ->
+                PolicyAuditRow(
+                    organizationId = rs.getString("organization_id"),
+                    subjectUserId = rs.getString("subject_user_id"),
+                    clientId = rs.getString("client_id"),
+                    resourceType = rs.getString("resource_type"),
+                    operation = rs.getString("operation"),
+                    outcome = rs.getString("outcome"),
+                    policyVersion = rs.getString("policy_version"),
+                    policyReasonCode = rs.getString("policy_reason_code"),
+                    correlationId = rs.getString("correlation_id"),
+                    metadata = rs.getString("metadata"),
+                )
+            },
+            correlationId,
+        )!!
+    }
 }
 
 data class PolicyEndpointFixture(
@@ -156,4 +231,17 @@ data class PolicyEndpointFixture(
     val userId: String,
     val organizationId: String,
     val membershipId: String,
+)
+
+data class PolicyAuditRow(
+    val organizationId: String,
+    val subjectUserId: String,
+    val clientId: String?,
+    val resourceType: String,
+    val operation: String,
+    val outcome: String,
+    val policyVersion: String,
+    val policyReasonCode: String,
+    val correlationId: String,
+    val metadata: String,
 )
