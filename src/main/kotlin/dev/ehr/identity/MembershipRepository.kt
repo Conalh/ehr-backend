@@ -56,6 +56,24 @@ class MembershipRepository(
             userId.value,
         ).singleOrNull()
 
+    fun findActiveByOrganizationAndUser(
+        organizationId: OrganizationId,
+        userId: UserId,
+    ): Membership? =
+        jdbcTemplate.query(
+            """
+            select id, organization_id, user_id, practitioner_id, status, created_at, updated_at
+            from memberships
+            where organization_id = ?
+              and user_id = ?
+              and status = ?
+            """.trimIndent(),
+            rowMapper,
+            organizationId.value,
+            userId.value,
+            MembershipStatus.ACTIVE.dbValue,
+        ).singleOrNull()
+
     fun findByOrganizationId(organizationId: OrganizationId): List<Membership> =
         jdbcTemplate.query(
             """

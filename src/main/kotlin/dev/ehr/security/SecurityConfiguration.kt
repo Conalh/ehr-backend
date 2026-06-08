@@ -1,5 +1,6 @@
 package dev.ehr.security
 
+import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.OrganizationRepository
 import dev.ehr.identity.UserRepository
 import org.springframework.beans.factory.annotation.Value
@@ -23,10 +24,12 @@ class SecurityConfiguration {
     fun jwtPrincipalAuthenticationConverter(
         userRepository: UserRepository,
         organizationRepository: OrganizationRepository,
+        membershipRepository: MembershipRepository,
     ): JwtPrincipalAuthenticationConverter =
         JwtPrincipalAuthenticationConverter(
             userRepository = userRepository,
             organizationRepository = organizationRepository,
+            membershipRepository = membershipRepository,
         )
 
     @Bean

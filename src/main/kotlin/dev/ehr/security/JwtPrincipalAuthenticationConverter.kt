@@ -1,5 +1,6 @@
 package dev.ehr.security
 
+import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.Organization
 import dev.ehr.identity.OrganizationId
@@ -19,6 +20,7 @@ import java.util.UUID
 class JwtPrincipalAuthenticationConverter(
     private val userRepository: UserRepository,
     private val organizationRepository: OrganizationRepository,
+    private val membershipRepository: MembershipRepository,
 ) : Converter<Jwt, AbstractAuthenticationToken> {
     override fun convert(jwt: Jwt): AbstractAuthenticationToken {
         val externalSubject = jwt.subject?.trim()?.takeIf { it.isNotEmpty() }
@@ -34,6 +36,11 @@ class JwtPrincipalAuthenticationConverter(
             invalidToken("JWT organization is not active")
         }
 
+        val membership = membershipRepository.findActiveByOrganizationAndUser(
+            organizationId = organization.id,
+            userId = user.id,
+        ) ?: invalidToken("JWT subject is not an active member of the organization")
+        val roles = membershipRepository.findRoles(membership.id)
         val scopes = extractScopes(jwt)
         val principal = SecurityPrincipal(
             subject = AuthenticatedSubject(
@@ -44,6 +51,10 @@ class JwtPrincipalAuthenticationConverter(
             ),
             organization = OrganizationContext(
                 organizationId = organization.id,
+            ),
+            membership = MembershipContext(
+                membershipId = membership.id,
+                roles = roles,
             ),
         )
         val authorities = scopes.map { SimpleGrantedAuthority("SCOPE_${it.rawValue}") }

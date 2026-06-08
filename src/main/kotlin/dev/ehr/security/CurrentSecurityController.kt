@@ -19,6 +19,8 @@ class CurrentSecurityController {
             externalSubject = principal.subject.externalSubject,
             userId = principal.subject.userId?.value?.toString(),
             organizationId = principal.organization.organizationId.value.toString(),
+            membershipId = principal.membership.membershipId.value.toString(),
+            roles = principal.membership.roles.map { it.dbValue },
             scopes = principal.subject.scopes.map { it.rawValue },
             clientId = principal.subject.clientId?.value?.toString(),
         )
@@ -29,6 +31,8 @@ data class CurrentSecurityResponse(
     val externalSubject: String,
     val userId: String?,
     val organizationId: String,
+    val membershipId: String,
+    val roles: List<String>,
     val scopes: List<String>,
     val clientId: String?,
 )
