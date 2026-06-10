@@ -12,6 +12,7 @@ enum class PolicyResourceType {
     CONDITION,
     ALLERGY,
     OBSERVATION,
+    MEDICATION,
     SYSTEM,
 }
 

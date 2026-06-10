@@ -1,10 +1,9 @@
-package dev.ehr.allergy
+package dev.ehr.medication
 
 import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.MembershipRole
 import dev.ehr.identity.Organization
 import dev.ehr.identity.OrganizationRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.identity.User
 import dev.ehr.identity.UserRepository
 import dev.ehr.patient.Patient
@@ -35,7 +34,7 @@ import java.util.UUID
 
 @AutoConfigureMockMvc
 @Import(DevJwtTestConfiguration::class)
-class AllergyApiIntegrationTest : PostgresIntegrationTest() {
+class MedicationStatementApiIntegrationTest : PostgresIntegrationTest() {
     @Autowired
     lateinit var mockMvc: MockMvc
 
@@ -52,7 +51,7 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     lateinit var patientRepository: PatientRepository
 
     @Autowired
-    lateinit var allergyRepository: AllergyRepository
+    lateinit var medicationStatementRepository: MedicationStatementRepository
 
     @Autowired
     lateinit var codingRepository: CodingRepository
@@ -66,23 +65,23 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     @Autowired
     lateinit var jwtEncoder: JwtEncoder
 
-    lateinit var codeConcept: CodeableConcept
+    lateinit var medicationConcept: CodeableConcept
 
     @BeforeEach
     fun setUpConcept() {
-        codeConcept = TerminologyTestFixtures(codingRepository, codeableConceptRepository)
+        medicationConcept = TerminologyTestFixtures(codingRepository, codeableConceptRepository)
             .findOrCreateConcept(
-                system = CanonicalCodeSystems.SNOMED_CT,
-                code = "91935009",
-                display = "Allergy to peanut",
+                system = CanonicalCodeSystems.RXNORM,
+                code = "197361",
+                display = "Lisinopril 10 MG Oral Tablet",
             )
     }
 
     @Test
-    fun `allergy endpoints reject unauthenticated requests without audit`() {
-        val correlationId = "allergy-unauth-${UUID.randomUUID()}"
+    fun `medication statement endpoints reject unauthenticated requests without audit`() {
+        val correlationId = "med-unauth-${UUID.randomUUID()}"
 
-        mockMvc.get("/api/v1/allergies/${UUID.randomUUID()}") {
+        mockMvc.get("/api/v1/medication-statements/${UUID.randomUUID()}") {
             header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isUnauthorized() }
@@ -92,21 +91,19 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `clinician can record an allergy and the create is audited`() {
-        val correlationId = "allergy-record-${UUID.randomUUID()}"
-        val member = createMember(MembershipRole.CLINICIAN, "user/AllergyIntolerance.write user/AllergyIntolerance.read")
+    fun `clinician can record a medication statement and the create is audited`() {
+        val correlationId = "med-record-${UUID.randomUUID()}"
+        val member = createMember(MembershipRole.CLINICIAN, "user/MedicationStatement.write user/MedicationStatement.read")
         val patient = createPatient(member.organization)
 
-        mockMvc.post("/api/v1/patients/${patient.id.value}/allergies") {
+        mockMvc.post("/api/v1/patients/${patient.id.value}/medication-statements") {
             contentType = MediaType.APPLICATION_JSON
             content = """
                 {
-                  "codeConceptId": "${codeConcept.id.value}",
-                  "clinicalStatus": "ACTIVE",
-                  "verificationStatus": "CONFIRMED",
-                  "category": "FOOD",
-                  "criticality": "HIGH",
-                  "onsetDate": "2020-07-04"
+                  "medicationConceptId": "${medicationConcept.id.value}",
+                  "status": "ACTIVE",
+                  "dosageText": "10 mg orally once daily",
+                  "effectiveStart": "2026-01-01"
                 }
             """.trimIndent()
             header("Authorization", "Bearer ${member.token}")
@@ -115,16 +112,15 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
             status { isCreated() }
             jsonPath("$.id") { exists() }
             jsonPath("$.patientId") { value(patient.id.value.toString()) }
-            jsonPath("$.clinicalStatus") { value("active") }
-            jsonPath("$.verificationStatus") { value("confirmed") }
-            jsonPath("$.category") { value("food") }
-            jsonPath("$.criticality") { value("high") }
-            jsonPath("$.onsetDate") { value("2020-07-04") }
+            jsonPath("$.status") { value("active") }
+            jsonPath("$.medicationConceptId") { value(medicationConcept.id.value.toString()) }
+            jsonPath("$.dosageText") { value("10 mg orally once daily") }
+            jsonPath("$.effectiveStart") { value("2026-01-01") }
             jsonPath("$.version") { value(1) }
         }
 
         val audit = auditRow(correlationId)
-        assertEquals("ALLERGY", audit.resourceType)
+        assertEquals("MEDICATION", audit.resourceType)
         assertEquals("CREATE", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
         assertEquals(patient.id.value.toString(), audit.patientId)
@@ -132,33 +128,33 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `staff cannot read or record allergies`() {
-        val readCorrelationId = "allergy-staff-read-${UUID.randomUUID()}"
+    fun `staff cannot read medication statements`() {
+        val correlationId = "med-staff-${UUID.randomUUID()}"
         val member = createMember(MembershipRole.STAFF, "user/*.read user/*.write")
         val patient = createPatient(member.organization)
-        val allergy = createAllergy(member.organization, patient)
+        val statement = createStatement(member.organization, patient)
 
-        mockMvc.get("/api/v1/allergies/${allergy.id.value}") {
+        mockMvc.get("/api/v1/medication-statements/${statement.id.value}") {
             header("Authorization", "Bearer ${member.token}")
-            header("X-Correlation-Id", readCorrelationId)
+            header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isForbidden() }
         }
 
-        val audit = auditRow(readCorrelationId)
+        val audit = auditRow(correlationId)
         assertEquals("AUTHORIZATION_DENIED", audit.operation)
         assertEquals("INSUFFICIENT_ROLE", audit.policyReasonCode)
     }
 
     @Test
-    fun `cross organization allergy read returns 404 and audits a failed read`() {
-        val correlationId = "allergy-read-cross-${UUID.randomUUID()}"
-        val member = createMember(MembershipRole.CLINICIAN, "user/AllergyIntolerance.read")
+    fun `cross organization medication statement read returns 404 and audits a failed read`() {
+        val correlationId = "med-cross-${UUID.randomUUID()}"
+        val member = createMember(MembershipRole.CLINICIAN, "user/MedicationStatement.read")
         val otherOrganization = createOrganization()
         val otherPatient = createPatient(otherOrganization)
-        val otherAllergy = createAllergy(otherOrganization, otherPatient)
+        val otherStatement = createStatement(otherOrganization, otherPatient)
 
-        mockMvc.get("/api/v1/allergies/${otherAllergy.id.value}") {
+        mockMvc.get("/api/v1/medication-statements/${otherStatement.id.value}") {
             header("Authorization", "Bearer ${member.token}")
             header("X-Correlation-Id", correlationId)
         }.andExpect {
@@ -172,54 +168,62 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `recording an allergy for another organizations patient returns 404`() {
-        val member = createMember(MembershipRole.CLINICIAN, "user/AllergyIntolerance.write")
+    fun `recording for cross tenant patient or with unknown concept or inverted period fails`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/MedicationStatement.write")
+        val patient = createPatient(member.organization)
         val otherOrganization = createOrganization()
         val otherPatient = createPatient(otherOrganization)
 
-        mockMvc.post("/api/v1/patients/${otherPatient.id.value}/allergies") {
+        mockMvc.post("/api/v1/patients/${otherPatient.id.value}/medication-statements") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"codeConceptId":"${codeConcept.id.value}"}"""
+            content = """{"medicationConceptId":"${medicationConcept.id.value}"}"""
             header("Authorization", "Bearer ${member.token}")
         }.andExpect {
             status { isNotFound() }
         }
 
-        assertEquals(0, allergyCount(otherOrganization))
-    }
-
-    @Test
-    fun `recording an allergy with unknown code concept returns 400`() {
-        val member = createMember(MembershipRole.CLINICIAN, "user/AllergyIntolerance.write")
-        val patient = createPatient(member.organization)
-
-        mockMvc.post("/api/v1/patients/${patient.id.value}/allergies") {
+        mockMvc.post("/api/v1/patients/${patient.id.value}/medication-statements") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"codeConceptId":"${UUID.randomUUID()}"}"""
+            content = """{"medicationConceptId":"${UUID.randomUUID()}"}"""
             header("Authorization", "Bearer ${member.token}")
         }.andExpect {
             status { isBadRequest() }
         }
 
-        assertEquals(0, allergyCount(member.organization))
+        mockMvc.post("/api/v1/patients/${patient.id.value}/medication-statements") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "medicationConceptId": "${medicationConcept.id.value}",
+                  "effectiveStart": "2026-05-01",
+                  "effectiveEnd": "2026-01-01"
+                }
+            """.trimIndent()
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        assertEquals(0, statementCount(member.organization))
+        assertEquals(0, statementCount(otherOrganization))
     }
 
     @Test
-    fun `allergy list is audited as a search and excludes other patients`() {
-        val correlationId = "allergy-list-${UUID.randomUUID()}"
-        val member = createMember(MembershipRole.CLINICIAN, "user/AllergyIntolerance.read")
+    fun `medication list is audited as a search and excludes other patients`() {
+        val correlationId = "med-list-${UUID.randomUUID()}"
+        val member = createMember(MembershipRole.CLINICIAN, "user/MedicationStatement.read")
         val patient = createPatient(member.organization)
         val otherPatient = createPatient(member.organization)
-        val allergy = createAllergy(member.organization, patient)
-        createAllergy(member.organization, otherPatient)
+        val statement = createStatement(member.organization, patient)
+        createStatement(member.organization, otherPatient)
 
-        mockMvc.get("/api/v1/patients/${patient.id.value}/allergies") {
+        mockMvc.get("/api/v1/patients/${patient.id.value}/medication-statements") {
             header("Authorization", "Bearer ${member.token}")
             header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.allergies.length()") { value(1) }
-            jsonPath("$.allergies[0].id") { value(allergy.id.value.toString()) }
+            jsonPath("$.medicationStatements.length()") { value(1) }
+            jsonPath("$.medicationStatements[0].id") { value(statement.id.value.toString()) }
         }
 
         val audit = auditRow(correlationId)
@@ -229,13 +233,13 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `clinician without allergy scope is denied`() {
-        val correlationId = "allergy-scope-${UUID.randomUUID()}"
-        val member = createMember(MembershipRole.CLINICIAN, "user/Condition.read")
+    fun `clinician without medication scope is denied`() {
+        val correlationId = "med-scope-${UUID.randomUUID()}"
+        val member = createMember(MembershipRole.CLINICIAN, "user/Observation.read")
         val patient = createPatient(member.organization)
-        val allergy = createAllergy(member.organization, patient)
+        val statement = createStatement(member.organization, patient)
 
-        mockMvc.get("/api/v1/allergies/${allergy.id.value}") {
+        mockMvc.get("/api/v1/medication-statements/${statement.id.value}") {
             header("Authorization", "Bearer ${member.token}")
             header("X-Correlation-Id", correlationId)
         }.andExpect {
@@ -247,38 +251,24 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("INSUFFICIENT_SCOPE", audit.policyReasonCode)
     }
 
-    @Test
-    fun `wrong tenant allergy list returns 404`() {
-        val member = createMember(MembershipRole.CLINICIAN, "user/AllergyIntolerance.read")
-        val otherOrganization = createOrganization()
-        val otherPatient = createPatient(otherOrganization)
-        createAllergy(otherOrganization, otherPatient)
-
-        mockMvc.get("/api/v1/patients/${otherPatient.id.value}/allergies") {
-            header("Authorization", "Bearer ${member.token}")
-        }.andExpect {
-            status { isNotFound() }
-        }
-    }
-
     private fun createOrganization(): Organization {
         val suffix = UUID.randomUUID()
         return organizationRepository.create(
-            slug = "allergy-api-org-$suffix",
-            displayName = "Allergy Api Org $suffix",
+            slug = "med-api-org-$suffix",
+            displayName = "Med Api Org $suffix",
         )
     }
 
     private fun createMember(
         role: MembershipRole,
         scopes: String,
-    ): AllergyMemberFixture {
+    ): MedicationMemberFixture {
         val suffix = UUID.randomUUID()
         val organization = createOrganization()
         val user = userRepository.create(
-            externalSubject = "allergy-api-user-$suffix",
-            email = "allergy-api-user-$suffix@example.test",
-            displayName = "Allergy Api User $suffix",
+            externalSubject = "med-api-user-$suffix",
+            email = "med-api-user-$suffix@example.test",
+            displayName = "Med Api User $suffix",
         )
         val membership = membershipRepository.create(
             organizationId = organization.id,
@@ -286,7 +276,7 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
         )
         membershipRepository.addRole(membership.id, role)
 
-        return AllergyMemberFixture(
+        return MedicationMemberFixture(
             organization = organization,
             user = user,
             token = DevJwtFactory(jwtEncoder).tokenFor(
@@ -306,21 +296,22 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
             ),
         )
 
-    private fun createAllergy(
+    private fun createStatement(
         organization: Organization,
         patient: Patient,
-    ): Allergy =
-        allergyRepository.create(
-            AllergyCreateCommand(
+    ): MedicationStatement =
+        medicationStatementRepository.create(
+            MedicationStatementCreateCommand(
                 organizationId = organization.id,
                 patientId = patient.id,
-                codeConceptId = codeConcept.id,
+                medicationConceptId = medicationConcept.id,
+                dosageText = "10 mg orally once daily",
             ),
         )
 
-    private fun allergyCount(organization: Organization): Int =
+    private fun statementCount(organization: Organization): Int =
         jdbcTemplate.queryForObject(
-            "select count(*) from allergies where organization_id = ?",
+            "select count(*) from medication_statements where organization_id = ?",
             Int::class.java,
             organization.id.value,
         )!!
@@ -332,7 +323,7 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
             correlationId,
         )!!
 
-    private fun auditRow(correlationId: String): AllergyAuditRow {
+    private fun auditRow(correlationId: String): MedicationAuditRow {
         assertEquals(1, auditCount(correlationId), "expected exactly one audit row for $correlationId")
         return jdbcTemplate.queryForObject(
             """
@@ -348,7 +339,7 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
             where correlation_id = ?
             """.trimIndent(),
             { rs, _ ->
-                AllergyAuditRow(
+                MedicationAuditRow(
                     patientId = rs.getString("patient_id"),
                     resourceType = rs.getString("resource_type"),
                     resourceId = rs.getString("resource_id"),
@@ -363,13 +354,13 @@ class AllergyApiIntegrationTest : PostgresIntegrationTest() {
     }
 }
 
-data class AllergyMemberFixture(
+data class MedicationMemberFixture(
     val organization: Organization,
     val user: User,
     val token: String,
 )
 
-data class AllergyAuditRow(
+data class MedicationAuditRow(
     val patientId: String?,
     val resourceType: String,
     val resourceId: String?,

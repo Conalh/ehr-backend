@@ -104,7 +104,7 @@ class PolicyEvaluator {
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v6"
+        const val POLICY_VERSION = "policy-spine-v7"
 
         private val rules: Map<PolicyResourceType, Map<PolicyOperation, PolicyRule>> = mapOf(
             PolicyResourceType.ORGANIZATION to mapOf(
@@ -241,6 +241,31 @@ class PolicyEvaluator {
                         "user/Observation.write",
                         "user/*.write",
                         "system/Observation.write",
+                        "system/*.write",
+                    ),
+                ),
+            ),
+            // Medication statements are clinical-record data: clinician-only.
+            PolicyResourceType.MEDICATION to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/MedicationStatement.read",
+                        "user/*.read",
+                        "system/MedicationStatement.read",
+                        "system/*.read",
+                    ),
+                ),
+                PolicyOperation.WRITE to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/MedicationStatement.write",
+                        "user/*.write",
+                        "system/MedicationStatement.write",
                         "system/*.write",
                     ),
                 ),
