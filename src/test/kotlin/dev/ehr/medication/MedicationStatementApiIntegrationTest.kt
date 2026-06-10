@@ -124,7 +124,7 @@ class MedicationStatementApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("CREATE", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
         assertEquals(patient.id.value.toString(), audit.patientId)
-        assertEquals("policy-spine-v10", audit.policyVersion)
+        assertEquals("policy-spine-v11", audit.policyVersion)
     }
 
     @Test

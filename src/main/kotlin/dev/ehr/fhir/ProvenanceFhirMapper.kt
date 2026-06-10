@@ -65,6 +65,8 @@ class ProvenanceFhirMapper {
             "OBSERVATION" to "Observation",
             "MEDICATION" to "MedicationStatement",
             "NOTE" to "DocumentReference",
+            "ORDER" to "ServiceRequest",
+            "DIAGNOSTIC_REPORT" to "DiagnosticReport",
         )
 
         private val fhirToInternalType = internalToFhirType.entries.associate { it.value to it.key }

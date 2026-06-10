@@ -17,6 +17,7 @@ enum class PolicyResourceType {
     CHART,
     PROVENANCE,
     ORDER,
+    DIAGNOSTIC_REPORT,
     SYSTEM,
 }
 
