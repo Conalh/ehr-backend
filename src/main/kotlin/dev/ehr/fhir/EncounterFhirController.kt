@@ -1,8 +1,12 @@
 package dev.ehr.fhir
 
+import dev.ehr.encounter.Encounter
+import dev.ehr.encounter.EncounterId
+import dev.ehr.encounter.EncounterService
 import dev.ehr.patient.PatientId
-import dev.ehr.patient.PatientService
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.terminology.CodeableConcept
+import dev.ehr.terminology.CodeableConceptRepository
 import org.hl7.fhir.r4.model.Bundle
 import org.hl7.fhir.r4.model.OperationOutcome
 import org.springframework.http.HttpStatus
@@ -19,56 +23,60 @@ import java.util.UUID
 
 @RestController
 @RequestMapping("/fhir/r4")
-class PatientFhirController(
-    private val patientService: PatientService,
-    private val patientFhirMapper: PatientFhirMapper,
+class EncounterFhirController(
+    private val encounterService: EncounterService,
+    private val encounterFhirMapper: EncounterFhirMapper,
+    private val codeableConceptRepository: CodeableConceptRepository,
     private val responses: FhirResponseFactory,
 ) {
-    @GetMapping("/Patient/{id}", produces = [FHIR_JSON])
+    @GetMapping("/Encounter/{id}", produces = [FHIR_JSON])
     fun read(
         authentication: Authentication,
         @PathVariable id: String,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
-        val patientId = parsePatientId(id)
+        val encounterId = parseUuid(id)?.let(::EncounterId)
             ?: return responses.operationOutcome(
                 HttpStatus.NOT_FOUND,
                 OperationOutcome.IssueType.NOTFOUND,
-                "Patient not found",
+                "Encounter not found",
             )
 
         return try {
-            val result = patientService.get(principal, patientId)
-            responses.resource(HttpStatus.OK, patientFhirMapper.toFhirPatient(result))
+            val encounter = encounterService.get(principal, encounterId)
+            responses.resource(
+                HttpStatus.OK,
+                encounterFhirMapper.toFhirEncounter(encounter, classConcept(encounter)),
+            )
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
         }
     }
 
-    @GetMapping("/Patient", produces = [FHIR_JSON])
+    @GetMapping("/Encounter", produces = [FHIR_JSON])
     fun search(
         authentication: Authentication,
-        @RequestParam identifier: String?,
+        @RequestParam patient: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
-        val token = parseIdentifierToken(identifier)
+        val patientId = parsePatientParam(patient)
             ?: return responses.operationOutcome(
                 HttpStatus.BAD_REQUEST,
                 OperationOutcome.IssueType.INVALID,
-                "The identifier search parameter is required in system|value form",
+                "The patient search parameter is required as a logical id or Patient/{id} reference",
             )
 
         return try {
-            val results = patientService.searchByIdentifier(principal, token.first, token.second)
+            val encounters = encounterService.timeline(principal, patientId)
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
-            bundle.total = results.size
-            results.forEach { result ->
-                val fhirPatient = patientFhirMapper.toFhirPatient(result)
+            bundle.total = encounters.size
+            encounters.forEach { encounter ->
+                val fhirEncounter = encounterFhirMapper.toFhirEncounter(encounter, classConcept(encounter))
                 bundle.addEntry(
                     Bundle.BundleEntryComponent()
-                        .setFullUrl(patientFullUrl(fhirPatient.idElement.idPart))
-                        .setResource(fhirPatient)
+                        .setFullUrl(encounterFullUrl(fhirEncounter.idElement.idPart))
+                        .setResource(fhirEncounter)
                         .setSearch(
                             Bundle.BundleEntrySearchComponent()
                                 .setMode(Bundle.SearchEntryMode.MATCH),
@@ -81,32 +89,28 @@ class PatientFhirController(
         }
     }
 
+    private fun classConcept(encounter: Encounter): CodeableConcept =
+        codeableConceptRepository.findById(encounter.classConceptId)
+            ?: throw IllegalStateException("encounter class concept is missing")
+
     private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
         authentication.principal as? SecurityPrincipal
             ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 
-    private fun parsePatientId(id: String): PatientId? =
-        runCatching { PatientId(UUID.fromString(id)) }.getOrNull()
-
-    private fun parseIdentifierToken(identifier: String?): Pair<String, String>? {
-        if (identifier == null) {
+    private fun parsePatientParam(patient: String?): PatientId? {
+        if (patient.isNullOrBlank()) {
             return null
         }
-        val separatorIndex = identifier.indexOf('|')
-        if (separatorIndex <= 0 || separatorIndex == identifier.length - 1) {
-            return null
-        }
-        val system = identifier.substring(0, separatorIndex)
-        val value = identifier.substring(separatorIndex + 1)
-        if (system.isBlank() || value.isBlank()) {
-            return null
-        }
-        return system to value
+        val idPart = patient.removePrefix("Patient/")
+        return parseUuid(idPart)?.let(::PatientId)
     }
 
-    private fun patientFullUrl(idPart: String): String =
+    private fun parseUuid(value: String): UUID? =
+        runCatching { UUID.fromString(value) }.getOrNull()
+
+    private fun encounterFullUrl(idPart: String): String =
         ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/Patient/{id}")
+            .path("/fhir/r4/Encounter/{id}")
             .buildAndExpand(idPart)
             .toUriString()
 }
