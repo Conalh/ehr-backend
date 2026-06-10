@@ -8,6 +8,7 @@ import dev.ehr.identity.UserId
 enum class PolicyResourceType {
     ORGANIZATION,
     PATIENT,
+    ENCOUNTER,
     SYSTEM,
 }
 

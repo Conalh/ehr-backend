@@ -10,6 +10,7 @@ enum class AuditOperation(val dbValue: String) {
     READ("READ"),
     SEARCH("SEARCH"),
     CREATE("CREATE"),
+    UPDATE("UPDATE"),
     AUTHORIZATION_DENIED("AUTHORIZATION_DENIED"),
 }
 
