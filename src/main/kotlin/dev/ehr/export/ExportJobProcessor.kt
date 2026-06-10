@@ -30,8 +30,8 @@ import dev.ehr.terminology.CodeableConcept
 import dev.ehr.terminology.CodeableConceptId
 import dev.ehr.terminology.CodeableConceptRepository
 import org.hl7.fhir.instance.model.api.IBaseResource
+import dev.ehr.runtime.EhrProperties
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
@@ -65,8 +65,7 @@ class ExportJobProcessor(
     private val diagnosticReportFhirMapper: DiagnosticReportFhirMapper,
     private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val fhirContext: FhirContext,
-    @Value("\${ehr.export.storage-dir:\${java.io.tmpdir}/ehr-exports}")
-    private val storageDir: String,
+    private val properties: EhrProperties,
 ) {
     @Async
     fun processAsync(job: ExportJob) {
@@ -202,7 +201,7 @@ class ExportJobProcessor(
         }
     }
 
-    fun jobDirectory(jobId: UUID): Path = Paths.get(storageDir, jobId.toString())
+    fun jobDirectory(jobId: UUID): Path = Paths.get(properties.export.storageDir, jobId.toString())
 
     private companion object {
         val log = LoggerFactory.getLogger(ExportJobProcessor::class.java)!!
