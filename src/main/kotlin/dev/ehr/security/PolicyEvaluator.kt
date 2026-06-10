@@ -41,7 +41,9 @@ class PolicyEvaluator {
             )
 
         val compatibleRoles = principal.membership.roles.filter { it in rule.roles }
-        val compatibleScopes = principal.subject.scopes.filter { it.rawValue in rule.scopes }
+        val compatibleScopes = principal.subject.scopes.filter { scope ->
+            scopeAuthorizes(scope, rule, request.operation)
+        }
 
         if (compatibleRoles.isEmpty()) {
             return decision(
@@ -75,6 +77,30 @@ class PolicyEvaluator {
         )
     }
 
+    private fun scopeAuthorizes(
+        scope: SecurityScope,
+        rule: PolicyRule,
+        operation: PolicyOperation,
+    ): Boolean {
+        val smartScope = SmartScope.parse(scope.rawValue) ?: return false
+        // Patient-context scopes need launch context, which does not exist yet: fail closed.
+        if (smartScope.context == SmartContext.PATIENT) {
+            return false
+        }
+        val resourceCovered = if (rule.requiresWildcardResource) {
+            smartScope.resourceType == "*"
+        } else {
+            smartScope.coversResource(rule.fhirResource)
+        }
+        if (!resourceCovered) {
+            return false
+        }
+        return when (operation) {
+            PolicyOperation.READ -> smartScope.canRead
+            PolicyOperation.WRITE -> smartScope.canWrite
+        }
+    }
+
     private fun decision(
         principal: SecurityPrincipal,
         request: PolicyEvaluationRequest,
@@ -100,277 +126,47 @@ class PolicyEvaluator {
 
     private data class PolicyRule(
         val roles: Set<MembershipRole>,
-        val scopes: Set<String>,
+        val fhirResource: String,
+        // The chart is a whole-compartment composite: only wildcard scopes cover it.
+        val requiresWildcardResource: Boolean = false,
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v11"
+        const val POLICY_VERSION = "policy-spine-v12"
+
+        private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
+        private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)
+        private val ADMINS = setOf(MembershipRole.ORG_ADMIN, MembershipRole.SYSTEM_ADMIN)
+
+        private fun readWrite(
+            readRoles: Set<MembershipRole>,
+            writeRoles: Set<MembershipRole>,
+            fhirResource: String,
+        ): Map<PolicyOperation, PolicyRule> = mapOf(
+            PolicyOperation.READ to PolicyRule(readRoles, fhirResource),
+            PolicyOperation.WRITE to PolicyRule(writeRoles, fhirResource),
+        )
 
         private val rules: Map<PolicyResourceType, Map<PolicyOperation, PolicyRule>> = mapOf(
             PolicyResourceType.ORGANIZATION to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.ORG_ADMIN,
-                        MembershipRole.SYSTEM_ADMIN,
-                    ),
-                    scopes = setOf(
-                        "user/*.read",
-                        "system/*.read",
-                    ),
-                ),
+                PolicyOperation.READ to PolicyRule(ADMINS, "Organization"),
             ),
-            PolicyResourceType.PATIENT to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                        MembershipRole.STAFF,
-                    ),
-                    scopes = setOf(
-                        "user/Patient.read",
-                        "user/*.read",
-                        "system/Patient.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Patient.write",
-                        "user/*.write",
-                        "system/Patient.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            PolicyResourceType.ENCOUNTER to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                        MembershipRole.STAFF,
-                    ),
-                    scopes = setOf(
-                        "user/Encounter.read",
-                        "user/*.read",
-                        "system/Encounter.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Encounter.write",
-                        "user/*.write",
-                        "system/Encounter.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // Conditions are clinical-record data: clinician-only, unlike scheduling-adjacent encounters.
-            PolicyResourceType.CONDITION to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Condition.read",
-                        "user/*.read",
-                        "system/Condition.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Condition.write",
-                        "user/*.write",
-                        "system/Condition.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // Allergy lists are clinical-record data: clinician-only, like conditions.
-            PolicyResourceType.ALLERGY to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/AllergyIntolerance.read",
-                        "user/*.read",
-                        "system/AllergyIntolerance.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/AllergyIntolerance.write",
-                        "user/*.write",
-                        "system/AllergyIntolerance.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // Observations (vitals/labs) are clinical-record data: clinician-only.
-            // Category-aware staff vitals access needs attribute-bearing policy inputs (future).
-            PolicyResourceType.OBSERVATION to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Observation.read",
-                        "user/*.read",
-                        "system/Observation.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Observation.write",
-                        "user/*.write",
-                        "system/Observation.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // Medication statements are clinical-record data: clinician-only.
-            PolicyResourceType.MEDICATION to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/MedicationStatement.read",
-                        "user/*.read",
-                        "system/MedicationStatement.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/MedicationStatement.write",
-                        "user/*.write",
-                        "system/MedicationStatement.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // Clinical notes are clinical-record data: clinician-only.
-            PolicyResourceType.NOTE to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/DocumentReference.read",
-                        "user/*.read",
-                        "system/DocumentReference.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/DocumentReference.write",
-                        "user/*.write",
-                        "system/DocumentReference.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // The chart is a whole-compartment composite read: clinician-only,
-            // and only wildcard read scopes cover every section.
-            PolicyResourceType.CHART to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/*.read",
-                        "system/*.read",
-                    ),
-                ),
-            ),
-            // Provenance reveals clinical-record metadata: clinician-only.
+            PolicyResourceType.PATIENT to readWrite(CLINICIAN_AND_STAFF, CLINICIAN_ONLY, "Patient"),
+            // Encounters are scheduling-adjacent, so staff retain read access.
+            PolicyResourceType.ENCOUNTER to readWrite(CLINICIAN_AND_STAFF, CLINICIAN_ONLY, "Encounter"),
+            // Everything below is clinical-record data: clinician-only.
+            PolicyResourceType.CONDITION to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "Condition"),
+            PolicyResourceType.ALLERGY to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "AllergyIntolerance"),
+            PolicyResourceType.OBSERVATION to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "Observation"),
+            PolicyResourceType.MEDICATION to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "MedicationStatement"),
+            PolicyResourceType.NOTE to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "DocumentReference"),
+            PolicyResourceType.ORDER to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "ServiceRequest"),
+            PolicyResourceType.DIAGNOSTIC_REPORT to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "DiagnosticReport"),
             PolicyResourceType.PROVENANCE to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/Provenance.read",
-                        "user/*.read",
-                        "system/Provenance.read",
-                        "system/*.read",
-                    ),
-                ),
+                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "Provenance"),
             ),
-            // Orders are clinical actions: clinician-only; scopes use the future FHIR name.
-            PolicyResourceType.ORDER to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/ServiceRequest.read",
-                        "user/*.read",
-                        "system/ServiceRequest.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/ServiceRequest.write",
-                        "user/*.write",
-                        "system/ServiceRequest.write",
-                        "system/*.write",
-                    ),
-                ),
-            ),
-            // Diagnostic reports are clinical-record data: clinician-only.
-            PolicyResourceType.DIAGNOSTIC_REPORT to mapOf(
-                PolicyOperation.READ to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/DiagnosticReport.read",
-                        "user/*.read",
-                        "system/DiagnosticReport.read",
-                        "system/*.read",
-                    ),
-                ),
-                PolicyOperation.WRITE to PolicyRule(
-                    roles = setOf(
-                        MembershipRole.CLINICIAN,
-                    ),
-                    scopes = setOf(
-                        "user/DiagnosticReport.write",
-                        "user/*.write",
-                        "system/DiagnosticReport.write",
-                        "system/*.write",
-                    ),
-                ),
+            PolicyResourceType.CHART to mapOf(
+                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
             ),
         )
     }

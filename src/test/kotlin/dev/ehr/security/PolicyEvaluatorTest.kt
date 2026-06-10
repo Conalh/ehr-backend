@@ -40,7 +40,7 @@ class PolicyEvaluatorTest {
         assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(null, decision.relationshipBasis)
         assertEquals(null, decision.purposeOfUse)
-        assertEquals("policy-spine-v11", decision.policyVersion)
+        assertEquals("policy-spine-v12", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
     }
 
@@ -351,6 +351,93 @@ class PolicyEvaluatorTest {
         )
         assertFalse(mismatched.allowed)
         assertEquals(PolicyReasonCode.ORGANIZATION_MISMATCH, mismatched.reasonCode)
+    }
+
+    @Test
+    fun `smart v2 scopes authorize by permission direction`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/Condition.rs",
+        )
+
+        assertTrue(
+            evaluator.evaluate(
+                clinician,
+                PolicyEvaluationRequest(PolicyResourceType.CONDITION, PolicyOperation.READ, organizationId),
+            ).allowed,
+        )
+        val writeDenied = evaluator.evaluate(
+            clinician,
+            PolicyEvaluationRequest(PolicyResourceType.CONDITION, PolicyOperation.WRITE, organizationId),
+        )
+        assertFalse(writeDenied.allowed)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, writeDenied.reasonCode)
+
+        val writer = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/Condition.cud",
+        )
+        assertTrue(
+            evaluator.evaluate(
+                writer,
+                PolicyEvaluationRequest(PolicyResourceType.CONDITION, PolicyOperation.WRITE, organizationId),
+            ).allowed,
+        )
+        assertFalse(
+            evaluator.evaluate(
+                writer,
+                PolicyEvaluationRequest(PolicyResourceType.CONDITION, PolicyOperation.READ, organizationId),
+            ).allowed,
+        )
+    }
+
+    @Test
+    fun `patient context scopes never authorize without launch context`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "patient/Patient.read patient/*.cruds",
+        )
+
+        val decision = evaluator.evaluate(
+            clinician,
+            PolicyEvaluationRequest(PolicyResourceType.PATIENT, PolicyOperation.READ, organizationId),
+        )
+        assertFalse(decision.allowed)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, decision.reasonCode)
+    }
+
+    @Test
+    fun `chart requires a wildcard resource scope`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+
+        val wildcardReader = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.rs",
+        )
+        assertTrue(
+            evaluator.evaluate(
+                wildcardReader,
+                PolicyEvaluationRequest(PolicyResourceType.CHART, PolicyOperation.READ, organizationId),
+            ).allowed,
+        )
+
+        val narrowReader = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/Patient.read user/Observation.read",
+        )
+        val denied = evaluator.evaluate(
+            narrowReader,
+            PolicyEvaluationRequest(PolicyResourceType.CHART, PolicyOperation.READ, organizationId),
+        )
+        assertFalse(denied.allowed)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, denied.reasonCode)
     }
 
     private fun encounterRequest(
