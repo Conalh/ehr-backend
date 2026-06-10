@@ -9,6 +9,7 @@ enum class PolicyResourceType {
     ORGANIZATION,
     PATIENT,
     ENCOUNTER,
+    CONDITION,
     SYSTEM,
 }
 

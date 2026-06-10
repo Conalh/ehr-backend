@@ -8,4 +8,6 @@ object CanonicalCodeSystems {
     const val ICD_10_CM = "http://hl7.org/fhir/sid/icd-10-cm"
     const val CVX = "http://hl7.org/fhir/sid/cvx"
     const val HL7_V3_ACT_CODE = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
+    const val HL7_CONDITION_CLINICAL = "http://terminology.hl7.org/CodeSystem/condition-clinical"
+    const val HL7_CONDITION_VER_STATUS = "http://terminology.hl7.org/CodeSystem/condition-ver-status"
 }
