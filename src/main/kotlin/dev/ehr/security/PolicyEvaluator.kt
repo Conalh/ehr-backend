@@ -20,8 +20,8 @@ class PolicyEvaluator {
             )
         }
 
-        if (request.resourceType != PolicyResourceType.ORGANIZATION) {
-            return decision(
+        val resourceRules = rules[request.resourceType]
+            ?: return decision(
                 principal = principal,
                 request = request,
                 allowed = false,
@@ -29,10 +29,9 @@ class PolicyEvaluator {
                 scopeBasis = emptyList(),
                 reasonCode = PolicyReasonCode.UNSUPPORTED_RESOURCE,
             )
-        }
 
-        if (request.operation != PolicyOperation.READ) {
-            return decision(
+        val rule = resourceRules[request.operation]
+            ?: return decision(
                 principal = principal,
                 request = request,
                 allowed = false,
@@ -40,12 +39,11 @@ class PolicyEvaluator {
                 scopeBasis = emptyList(),
                 reasonCode = PolicyReasonCode.UNSUPPORTED_OPERATION,
             )
-        }
 
-        val adminRoles = principal.membership.roles.filter { it in organizationReadRoles }
-        val compatibleScopes = principal.subject.scopes.filter { it.rawValue in organizationReadScopes }
+        val compatibleRoles = principal.membership.roles.filter { it in rule.roles }
+        val compatibleScopes = principal.subject.scopes.filter { it.rawValue in rule.scopes }
 
-        if (adminRoles.isEmpty()) {
+        if (compatibleRoles.isEmpty()) {
             return decision(
                 principal = principal,
                 request = request,
@@ -61,7 +59,7 @@ class PolicyEvaluator {
                 principal = principal,
                 request = request,
                 allowed = false,
-                roleBasis = adminRoles,
+                roleBasis = compatibleRoles,
                 scopeBasis = emptyList(),
                 reasonCode = PolicyReasonCode.INSUFFICIENT_SCOPE,
             )
@@ -71,7 +69,7 @@ class PolicyEvaluator {
             principal = principal,
             request = request,
             allowed = true,
-            roleBasis = adminRoles,
+            roleBasis = compatibleRoles,
             scopeBasis = compatibleScopes,
             reasonCode = PolicyReasonCode.ALLOWED,
         )
@@ -100,16 +98,52 @@ class PolicyEvaluator {
             reasonCode = reasonCode,
         )
 
-    companion object {
-        const val POLICY_VERSION = "policy-spine-v1"
+    private data class PolicyRule(
+        val roles: Set<MembershipRole>,
+        val scopes: Set<String>,
+    )
 
-        private val organizationReadRoles = setOf(
-            MembershipRole.ORG_ADMIN,
-            MembershipRole.SYSTEM_ADMIN,
-        )
-        private val organizationReadScopes = setOf(
-            "user/*.read",
-            "system/*.read",
+    companion object {
+        const val POLICY_VERSION = "policy-spine-v2"
+
+        private val rules: Map<PolicyResourceType, Map<PolicyOperation, PolicyRule>> = mapOf(
+            PolicyResourceType.ORGANIZATION to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.ORG_ADMIN,
+                        MembershipRole.SYSTEM_ADMIN,
+                    ),
+                    scopes = setOf(
+                        "user/*.read",
+                        "system/*.read",
+                    ),
+                ),
+            ),
+            PolicyResourceType.PATIENT to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                        MembershipRole.STAFF,
+                    ),
+                    scopes = setOf(
+                        "user/Patient.read",
+                        "user/*.read",
+                        "system/Patient.read",
+                        "system/*.read",
+                    ),
+                ),
+                PolicyOperation.WRITE to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/Patient.write",
+                        "user/*.write",
+                        "system/Patient.write",
+                        "system/*.write",
+                    ),
+                ),
+            ),
         )
     }
 }

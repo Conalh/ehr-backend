@@ -40,7 +40,7 @@ class PolicyEvaluatorTest {
         assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(null, decision.relationshipBasis)
         assertEquals(null, decision.purposeOfUse)
-        assertEquals("policy-spine-v1", decision.policyVersion)
+        assertEquals("policy-spine-v2", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
     }
 
@@ -174,6 +174,130 @@ class PolicyEvaluatorTest {
         assertFalse(decision.allowed)
         assertEquals(PolicyReasonCode.UNSUPPORTED_OPERATION, decision.reasonCode)
     }
+
+    @Test
+    fun `allows clinician patient read and write with compatible scopes`() {
+        listOf(
+            PolicyOperation.READ to "user/Patient.read",
+            PolicyOperation.READ to "user/*.read",
+            PolicyOperation.WRITE to "user/Patient.write",
+            PolicyOperation.WRITE to "system/*.write",
+        ).forEach { (operation, scope) ->
+            val organizationId = OrganizationId(UUID.randomUUID())
+            val principal = principal(
+                organizationId = organizationId,
+                roles = listOf(MembershipRole.CLINICIAN),
+                scopes = scope,
+            )
+
+            val decision = evaluator.evaluate(
+                principal = principal,
+                request = patientRequest(organizationId, operation),
+            )
+
+            assertTrue(decision.allowed, "expected $operation with $scope to be allowed")
+            assertEquals(listOf(MembershipRole.CLINICIAN), decision.roleBasis)
+            assertEquals(listOf(scope), decision.scopeBasis.map { it.rawValue })
+            assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
+        }
+    }
+
+    @Test
+    fun `allows staff patient read but denies staff patient write`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val principal = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.STAFF),
+            scopes = "user/Patient.read user/Patient.write",
+        )
+
+        val readDecision = evaluator.evaluate(
+            principal = principal,
+            request = patientRequest(organizationId, PolicyOperation.READ),
+        )
+        assertTrue(readDecision.allowed)
+        assertEquals(PolicyReasonCode.ALLOWED, readDecision.reasonCode)
+
+        val writeDecision = evaluator.evaluate(
+            principal = principal,
+            request = patientRequest(organizationId, PolicyOperation.WRITE),
+        )
+        assertFalse(writeDecision.allowed)
+        assertEquals(listOf(MembershipRole.STAFF), writeDecision.roleBasis)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_ROLE, writeDecision.reasonCode)
+    }
+
+    @Test
+    fun `denies admin roles patient read by default`() {
+        listOf(
+            MembershipRole.ORG_ADMIN,
+            MembershipRole.SYSTEM_ADMIN,
+        ).forEach { role ->
+            val organizationId = OrganizationId(UUID.randomUUID())
+            val principal = principal(
+                organizationId = organizationId,
+                roles = listOf(role),
+                scopes = "user/*.read",
+            )
+
+            val decision = evaluator.evaluate(
+                principal = principal,
+                request = patientRequest(organizationId, PolicyOperation.READ),
+            )
+
+            assertFalse(decision.allowed)
+            assertEquals(listOf(role), decision.roleBasis)
+            assertEquals(PolicyReasonCode.INSUFFICIENT_ROLE, decision.reasonCode)
+        }
+    }
+
+    @Test
+    fun `denies clinician patient write without compatible write scope`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val principal = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        )
+
+        val decision = evaluator.evaluate(
+            principal = principal,
+            request = patientRequest(organizationId, PolicyOperation.WRITE),
+        )
+
+        assertFalse(decision.allowed)
+        assertEquals(listOf(MembershipRole.CLINICIAN), decision.roleBasis)
+        assertEquals(emptyList<SecurityScope>(), decision.scopeBasis)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, decision.reasonCode)
+    }
+
+    @Test
+    fun `denies patient read when request organization does not match principal organization`() {
+        val principal = principal(
+            organizationId = OrganizationId(UUID.randomUUID()),
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/Patient.read",
+        )
+        val requestedOrganizationId = OrganizationId(UUID.randomUUID())
+
+        val decision = evaluator.evaluate(
+            principal = principal,
+            request = patientRequest(requestedOrganizationId, PolicyOperation.READ),
+        )
+
+        assertFalse(decision.allowed)
+        assertEquals(PolicyReasonCode.ORGANIZATION_MISMATCH, decision.reasonCode)
+    }
+
+    private fun patientRequest(
+        organizationId: OrganizationId,
+        operation: PolicyOperation,
+    ): PolicyEvaluationRequest =
+        PolicyEvaluationRequest(
+            resourceType = PolicyResourceType.PATIENT,
+            operation = operation,
+            organizationId = organizationId,
+        )
 
     private fun organizationReadRequest(organizationId: OrganizationId): PolicyEvaluationRequest =
         PolicyEvaluationRequest(

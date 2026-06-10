@@ -1,0 +1,146 @@
+package dev.ehr.patient
+
+import dev.ehr.identity.TenantScope
+import dev.ehr.security.AuditEventService
+import dev.ehr.security.AuditOperation
+import dev.ehr.security.AuditOutcome
+import dev.ehr.security.PolicyEvaluationRequest
+import dev.ehr.security.PolicyEvaluator
+import dev.ehr.security.PolicyOperation
+import dev.ehr.security.PolicyResourceType
+import dev.ehr.security.SecurityPrincipal
+import org.springframework.dao.DuplicateKeyException
+import org.springframework.http.HttpStatus
+import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionTemplate
+import org.springframework.web.server.ResponseStatusException
+import java.util.UUID
+
+data class PatientWithIdentifiers(
+    val patient: Patient,
+    val identifiers: List<PatientIdentifier>,
+)
+
+@Service
+class PatientService(
+    private val policyEvaluator: PolicyEvaluator,
+    private val auditEventService: AuditEventService,
+    private val patientRepository: PatientRepository,
+    private val transactionTemplate: TransactionTemplate,
+) {
+    fun create(
+        principal: SecurityPrincipal,
+        command: PatientCreateCommand,
+        identifierCommands: List<PatientIdentifierCreateCommand>,
+    ): PatientWithIdentifiers {
+        val decision = evaluate(principal, PolicyOperation.WRITE)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to create patients")
+        }
+        identifierCommands.forEach(::validateIdentifierCommand)
+
+        val tenantScope = tenantScope(principal)
+        try {
+            return transactionTemplate.execute {
+                val patient = patientRepository.create(command)
+                val identifiers = identifierCommands.map { identifierCommand ->
+                    patientRepository.addIdentifier(tenantScope, patient.id, identifierCommand)
+                }
+                auditEventService.recordResourceAccess(
+                    decision = decision,
+                    operation = AuditOperation.CREATE,
+                    outcome = AuditOutcome.SUCCESS,
+                    patientId = patient.id.value,
+                    resourceId = patient.id.value,
+                )
+                PatientWithIdentifiers(patient, identifiers)
+            }!!
+        } catch (exception: DuplicateKeyException) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Patient identifier already exists in this organization")
+        }
+    }
+
+    fun get(
+        principal: SecurityPrincipal,
+        patientId: PatientId,
+    ): PatientWithIdentifiers {
+        val decision = evaluate(principal, PolicyOperation.READ)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision, resourceId = patientId.value)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read patients")
+        }
+
+        val tenantScope = tenantScope(principal)
+        val patient = patientRepository.findById(tenantScope, patientId)
+        if (patient == null) {
+            // Existence is unconfirmed, so the requested UUID is recorded as the
+            // resource only; patient_id stays null to keep compartment audit clean.
+            auditEventService.recordResourceAccess(
+                decision = decision,
+                operation = AuditOperation.READ,
+                outcome = AuditOutcome.FAILURE,
+                resourceId = patientId.value,
+            )
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
+        }
+
+        auditEventService.recordResourceAccess(
+            decision = decision,
+            operation = AuditOperation.READ,
+            outcome = AuditOutcome.SUCCESS,
+            patientId = patient.id.value,
+            resourceId = patient.id.value,
+        )
+        return PatientWithIdentifiers(patient, patientRepository.findIdentifiers(tenantScope, patient.id))
+    }
+
+    fun searchByIdentifier(
+        principal: SecurityPrincipal,
+        system: String,
+        value: String,
+    ): List<PatientWithIdentifiers> {
+        val decision = evaluate(principal, PolicyOperation.READ)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to search patients")
+        }
+
+        val tenantScope = tenantScope(principal)
+        val patient = patientRepository.findByIdentifier(tenantScope, system, value)
+        auditEventService.recordResourceAccess(
+            decision = decision,
+            operation = AuditOperation.SEARCH,
+            outcome = AuditOutcome.SUCCESS,
+            patientId = patient?.id?.value,
+            resourceId = patient?.id?.value,
+        )
+        return patient
+            ?.let { listOf(PatientWithIdentifiers(it, patientRepository.findIdentifiers(tenantScope, it.id))) }
+            ?: emptyList()
+    }
+
+    private fun evaluate(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+    ) = policyEvaluator.evaluate(
+        principal = principal,
+        request = PolicyEvaluationRequest(
+            resourceType = PolicyResourceType.PATIENT,
+            operation = operation,
+            organizationId = principal.organization.organizationId,
+        ),
+    )
+
+    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
+        TenantScope(principal.organization.organizationId)
+
+    private fun validateIdentifierCommand(command: PatientIdentifierCreateCommand) {
+        if (command.assignerText != null && command.assignerText.isBlank()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Identifier assigner text must not be blank")
+        }
+        if (command.periodStart != null && command.periodEnd != null && command.periodEnd < command.periodStart) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Identifier period end must not be before period start")
+        }
+    }
+}

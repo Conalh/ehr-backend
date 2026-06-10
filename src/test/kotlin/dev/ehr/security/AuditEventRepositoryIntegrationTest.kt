@@ -66,6 +66,73 @@ class AuditEventRepositoryIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `repository appends patient access audit row with patient and resource ids`() {
+        val suffix = UUID.randomUUID()
+        val organization = organizationRepository.create(
+            slug = "audit-patient-org-$suffix",
+            displayName = "Audit Patient Org $suffix",
+        )
+        val user = userRepository.create(
+            externalSubject = "audit-patient-user-$suffix",
+            email = "audit-patient-user-$suffix@example.test",
+            displayName = "Audit Patient User $suffix",
+        )
+        val patientId = UUID.randomUUID()
+
+        val created = auditEventRepository.append(
+            AuditEventCommand(
+                organizationId = organization.id,
+                subjectUserId = user.id,
+                patientId = patientId,
+                resourceType = "PATIENT",
+                resourceId = patientId,
+                operation = AuditOperation.CREATE,
+                outcome = AuditOutcome.SUCCESS,
+                policyVersion = "policy-spine-v2",
+                policyReasonCode = "ALLOWED",
+                correlationId = "audit-patient-create-$suffix",
+            ),
+        )
+        assertEquals(patientId, created.patientId)
+        assertEquals(patientId, created.resourceId)
+        assertEquals(AuditOperation.CREATE, created.operation)
+
+        val notFound = auditEventRepository.append(
+            AuditEventCommand(
+                organizationId = organization.id,
+                subjectUserId = user.id,
+                patientId = null,
+                resourceType = "PATIENT",
+                resourceId = patientId,
+                operation = AuditOperation.READ,
+                outcome = AuditOutcome.FAILURE,
+                policyVersion = "policy-spine-v2",
+                policyReasonCode = "ALLOWED",
+                correlationId = "audit-patient-miss-$suffix",
+            ),
+        )
+        assertEquals(null, notFound.patientId)
+        assertEquals(patientId, notFound.resourceId)
+        assertEquals(AuditOutcome.FAILURE, notFound.outcome)
+
+        val search = auditEventRepository.append(
+            AuditEventCommand(
+                organizationId = organization.id,
+                subjectUserId = user.id,
+                patientId = patientId,
+                resourceType = "PATIENT",
+                resourceId = patientId,
+                operation = AuditOperation.SEARCH,
+                outcome = AuditOutcome.SUCCESS,
+                policyVersion = "policy-spine-v2",
+                policyReasonCode = "ALLOWED",
+                correlationId = "audit-patient-search-$suffix",
+            ),
+        )
+        assertEquals(AuditOperation.SEARCH, search.operation)
+    }
+
+    @Test
     fun `repository inserted audit rows remain append only`() {
         val suffix = UUID.randomUUID()
         val organization = organizationRepository.create(

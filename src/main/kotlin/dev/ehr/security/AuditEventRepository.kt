@@ -20,7 +20,9 @@ class AuditEventRepository(
               organization_id,
               subject_user_id,
               client_id,
+              patient_id,
               resource_type,
+              resource_id,
               operation,
               outcome,
               policy_version,
@@ -28,14 +30,16 @@ class AuditEventRepository(
               correlation_id,
               metadata
             )
-            values (?, ?, null, ?, ?, ?, ?, ?, ?, ?::jsonb)
+            values (?, ?, null, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
             returning
               id,
               occurred_at,
               organization_id,
               subject_user_id,
               client_id,
+              patient_id,
               resource_type,
+              resource_id,
               operation,
               outcome,
               policy_version,
@@ -46,7 +50,9 @@ class AuditEventRepository(
             rowMapper,
             command.organizationId?.value,
             command.subjectUserId?.value,
+            command.patientId,
             command.resourceType,
+            command.resourceId,
             command.operation.dbValue,
             command.outcome.dbValue,
             command.policyVersion,
@@ -63,7 +69,9 @@ class AuditEventRepository(
                 organizationId = rs.getObject("organization_id", UUID::class.java)?.let(::OrganizationId),
                 subjectUserId = rs.getObject("subject_user_id", UUID::class.java)?.let(::UserId),
                 clientId = rs.getObject("client_id", UUID::class.java)?.let(::OAuthClientId),
+                patientId = rs.getObject("patient_id", UUID::class.java),
                 resourceType = rs.getString("resource_type"),
+                resourceId = rs.getObject("resource_id", UUID::class.java),
                 operation = AuditOperation.valueOf(rs.getString("operation")),
                 outcome = AuditOutcome.valueOf(rs.getString("outcome")),
                 policyVersion = rs.getString("policy_version"),
