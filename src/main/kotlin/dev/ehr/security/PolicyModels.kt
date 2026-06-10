@@ -10,6 +10,7 @@ enum class PolicyResourceType {
     PATIENT,
     ENCOUNTER,
     CONDITION,
+    ALLERGY,
     SYSTEM,
 }
 

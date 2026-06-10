@@ -10,4 +10,6 @@ object CanonicalCodeSystems {
     const val HL7_V3_ACT_CODE = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
     const val HL7_CONDITION_CLINICAL = "http://terminology.hl7.org/CodeSystem/condition-clinical"
     const val HL7_CONDITION_VER_STATUS = "http://terminology.hl7.org/CodeSystem/condition-ver-status"
+    const val HL7_ALLERGY_CLINICAL = "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical"
+    const val HL7_ALLERGY_VER_STATUS = "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification"
 }
