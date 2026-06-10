@@ -71,6 +71,11 @@ class AllergyFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = allergies.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             allergies.forEach { allergy ->
                 val fhirAllergy = allergyFhirMapper.toFhirAllergyIntolerance(allergy, codeConcept(allergy))
                 bundle.addEntry(

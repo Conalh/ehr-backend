@@ -71,6 +71,11 @@ class DocumentReferenceFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = notes.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             notes.forEach { note ->
                 val fhirDocument = documentReferenceFhirMapper.toFhirDocumentReference(note, typeConcept(note))
                 bundle.addEntry(

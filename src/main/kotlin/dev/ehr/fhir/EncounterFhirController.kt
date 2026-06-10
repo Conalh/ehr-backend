@@ -71,6 +71,11 @@ class EncounterFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = encounters.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             encounters.forEach { encounter ->
                 val fhirEncounter = encounterFhirMapper.toFhirEncounter(encounter, classConcept(encounter))
                 bundle.addEntry(

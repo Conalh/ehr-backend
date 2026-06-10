@@ -71,6 +71,11 @@ class MedicationStatementFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = statements.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             statements.forEach { statement ->
                 val fhirStatement = medicationStatementFhirMapper
                     .toFhirMedicationStatement(statement, medicationConcept(statement))

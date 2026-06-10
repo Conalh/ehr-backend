@@ -80,6 +80,11 @@ class ObservationFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = observations.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             observations.forEach { observation ->
                 val fhirObservation = toFhir(observation)
                 bundle.addEntry(

@@ -82,6 +82,11 @@ class ProvenanceFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = events.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             events.forEach { event ->
                 val fhirProvenance = provenanceFhirMapper.toFhirProvenance(event)
                 bundle.addEntry(

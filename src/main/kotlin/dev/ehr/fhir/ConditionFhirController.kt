@@ -71,6 +71,11 @@ class ConditionFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = conditions.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             conditions.forEach { condition ->
                 val fhirCondition = conditionFhirMapper.toFhirCondition(condition, codeConcept(condition))
                 bundle.addEntry(

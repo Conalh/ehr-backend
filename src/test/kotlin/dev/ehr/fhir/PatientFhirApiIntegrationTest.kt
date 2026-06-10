@@ -188,6 +188,9 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
             jsonPath("$.resourceType") { value("Bundle") }
             jsonPath("$.type") { value("searchset") }
             jsonPath("$.total") { value(1) }
+            jsonPath("$.link[0].relation") { value("self") }
+            // MockMvc param() does not populate the query string; real requests include it.
+            jsonPath("$.link[0].url") { value(org.hamcrest.Matchers.containsString("/fhir/r4/Patient")) }
             jsonPath("$.entry[0].fullUrl") { value(org.hamcrest.Matchers.endsWith("/fhir/r4/Patient/${patient.id.value}")) }
             jsonPath("$.entry[0].search.mode") { value("match") }
             jsonPath("$.entry[0].resource.resourceType") { value("Patient") }

@@ -71,6 +71,11 @@ class DiagnosticReportFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = reports.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             reports.forEach { report ->
                 val fhirReport = diagnosticReportFhirMapper.toFhirDiagnosticReport(report, codeConcept(report))
                 bundle.addEntry(

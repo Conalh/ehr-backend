@@ -63,6 +63,11 @@ class PatientFhirController(
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = results.size
+            bundle.addLink(
+                Bundle.BundleLinkComponent()
+                    .setRelation("self")
+                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+            )
             results.forEach { result ->
                 val fhirPatient = patientFhirMapper.toFhirPatient(result)
                 bundle.addEntry(
