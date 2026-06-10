@@ -106,7 +106,7 @@ data class ConditionListResponse(
     val conditions: List<ConditionResponse>,
 )
 
-private fun Condition.toResponse(): ConditionResponse =
+fun Condition.toResponse(): ConditionResponse =
     ConditionResponse(
         id = id.value.toString(),
         organizationId = organizationId.value.toString(),

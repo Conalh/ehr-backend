@@ -148,7 +148,7 @@ data class ObservationListResponse(
     val observations: List<ObservationResponse>,
 )
 
-private fun Observation.toResponse(): ObservationResponse =
+fun Observation.toResponse(): ObservationResponse =
     ObservationResponse(
         id = id.value.toString(),
         organizationId = organizationId.value.toString(),

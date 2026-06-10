@@ -106,7 +106,7 @@ data class MedicationStatementListResponse(
     val medicationStatements: List<MedicationStatementResponse>,
 )
 
-private fun MedicationStatement.toResponse(): MedicationStatementResponse =
+fun MedicationStatement.toResponse(): MedicationStatementResponse =
     MedicationStatementResponse(
         id = id.value.toString(),
         organizationId = organizationId.value.toString(),

@@ -13,6 +13,8 @@ enum class PolicyResourceType {
     ALLERGY,
     OBSERVATION,
     MEDICATION,
+    NOTE,
+    CHART,
     SYSTEM,
 }
 

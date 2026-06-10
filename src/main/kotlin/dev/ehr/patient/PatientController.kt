@@ -139,7 +139,7 @@ data class PatientSearchResponse(
     val patients: List<PatientResponse>,
 )
 
-private fun PatientWithIdentifiers.toResponse(): PatientResponse =
+fun PatientWithIdentifiers.toResponse(): PatientResponse =
     PatientResponse(
         id = patient.id.value.toString(),
         organizationId = patient.organizationId.value.toString(),

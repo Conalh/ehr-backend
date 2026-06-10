@@ -104,7 +104,7 @@ class PolicyEvaluator {
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v7"
+        const val POLICY_VERSION = "policy-spine-v8"
 
         private val rules: Map<PolicyResourceType, Map<PolicyOperation, PolicyRule>> = mapOf(
             PolicyResourceType.ORGANIZATION to mapOf(
@@ -267,6 +267,44 @@ class PolicyEvaluator {
                         "user/*.write",
                         "system/MedicationStatement.write",
                         "system/*.write",
+                    ),
+                ),
+            ),
+            // Clinical notes are clinical-record data: clinician-only.
+            PolicyResourceType.NOTE to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/DocumentReference.read",
+                        "user/*.read",
+                        "system/DocumentReference.read",
+                        "system/*.read",
+                    ),
+                ),
+                PolicyOperation.WRITE to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/DocumentReference.write",
+                        "user/*.write",
+                        "system/DocumentReference.write",
+                        "system/*.write",
+                    ),
+                ),
+            ),
+            // The chart is a whole-compartment composite read: clinician-only,
+            // and only wildcard read scopes cover every section.
+            PolicyResourceType.CHART to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/*.read",
+                        "system/*.read",
                     ),
                 ),
             ),

@@ -109,7 +109,7 @@ data class AllergyListResponse(
     val allergies: List<AllergyResponse>,
 )
 
-private fun Allergy.toResponse(): AllergyResponse =
+fun Allergy.toResponse(): AllergyResponse =
     AllergyResponse(
         id = id.value.toString(),
         organizationId = organizationId.value.toString(),

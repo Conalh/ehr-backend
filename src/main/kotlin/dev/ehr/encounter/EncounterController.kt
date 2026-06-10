@@ -123,7 +123,7 @@ data class EncounterListResponse(
     val encounters: List<EncounterResponse>,
 )
 
-private fun Encounter.toResponse(): EncounterResponse =
+fun Encounter.toResponse(): EncounterResponse =
     EncounterResponse(
         id = id.value.toString(),
         organizationId = organizationId.value.toString(),
