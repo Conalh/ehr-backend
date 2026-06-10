@@ -40,7 +40,7 @@ class PolicyEvaluatorTest {
         assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(null, decision.relationshipBasis)
         assertEquals(null, decision.purposeOfUse)
-        assertEquals("policy-spine-v5", decision.policyVersion)
+        assertEquals("policy-spine-v6", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
     }
 

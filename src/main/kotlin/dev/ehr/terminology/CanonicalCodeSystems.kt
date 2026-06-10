@@ -12,4 +12,5 @@ object CanonicalCodeSystems {
     const val HL7_CONDITION_VER_STATUS = "http://terminology.hl7.org/CodeSystem/condition-ver-status"
     const val HL7_ALLERGY_CLINICAL = "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical"
     const val HL7_ALLERGY_VER_STATUS = "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification"
+    const val HL7_OBSERVATION_CATEGORY = "http://terminology.hl7.org/CodeSystem/observation-category"
 }
