@@ -13,6 +13,8 @@ import java.sql.ResultSet
 import java.sql.Timestamp
 import java.util.UUID
 
+class StaleObservationUpdateException(message: String) : RuntimeException(message)
+
 @Repository
 class ObservationRepository(
     private val jdbcTemplate: JdbcTemplate,
@@ -88,6 +90,41 @@ class ObservationRepository(
             tenantScope.organizationId.value,
             observationId.value,
         ).singleOrNull()
+
+    fun amend(
+        tenantScope: TenantScope,
+        observationId: ObservationId,
+        newValue: ObservationValue,
+        expectedVersion: Int,
+        updatedBy: UserId?,
+    ): Observation =
+        jdbcTemplate.query(
+            """
+            update observations
+            set status = 'amended',
+                value_quantity = ?,
+                value_quantity_unit = ?,
+                value_concept_id = ?,
+                value_text = ?,
+                version = version + 1,
+                updated_at = now(),
+                updated_by = coalesce(?, updated_by)
+            where organization_id = ?
+              and id = ?
+              and version = ?
+            returning $COLUMNS
+            """.trimIndent(),
+            rowMapper,
+            (newValue as? ObservationValue.Quantity)?.value,
+            (newValue as? ObservationValue.Quantity)?.unit,
+            (newValue as? ObservationValue.Coded)?.conceptId?.value,
+            (newValue as? ObservationValue.Text)?.value,
+            updatedBy?.value,
+            tenantScope.organizationId.value,
+            observationId.value,
+            expectedVersion,
+        ).singleOrNull()
+            ?: throw StaleObservationUpdateException("observation was modified concurrently; amendment not applied")
 
     fun findByPatient(
         tenantScope: TenantScope,

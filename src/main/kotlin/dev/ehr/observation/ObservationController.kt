@@ -50,6 +50,19 @@ class ObservationController(
         ).toResponse()
     }
 
+    @PostMapping("/observations/{observationId}/amend")
+    fun amend(
+        authentication: Authentication,
+        @PathVariable observationId: UUID,
+        @Valid @RequestBody request: AmendObservationRequest,
+    ): ObservationResponse =
+        observationService.amend(
+            principal = securityPrincipal(authentication),
+            observationId = ObservationId(observationId),
+            newValue = request.toObservationValue(),
+            expectedVersion = request.expectedVersion!!,
+        ).toResponse()
+
     @GetMapping("/observations/{observationId}")
     fun get(
         authentication: Authentication,
@@ -95,6 +108,36 @@ data class RecordObservationRequest(
     val effectiveAt: Instant?,
     val encounterId: UUID? = null,
     val status: ObservationStatus? = null,
+    val valueQuantity: QuantityValueRequest? = null,
+    val valueConceptId: UUID? = null,
+    val valueText: String? = null,
+) {
+    fun toObservationValue(): ObservationValue {
+        val provided = listOfNotNull(valueQuantity, valueConceptId, valueText)
+        if (provided.size != 1) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Exactly one of valueQuantity, valueConceptId, or valueText is required",
+            )
+        }
+        return try {
+            when {
+                valueQuantity != null -> ObservationValue.Quantity(
+                    value = valueQuantity.value!!,
+                    unit = valueQuantity.unit!!,
+                )
+                valueConceptId != null -> ObservationValue.Coded(CodeableConceptId(valueConceptId))
+                else -> ObservationValue.Text(valueText!!)
+            }
+        } catch (exception: IllegalArgumentException) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, exception.message)
+        }
+    }
+}
+
+data class AmendObservationRequest(
+    @field:NotNull
+    val expectedVersion: Int?,
     val valueQuantity: QuantityValueRequest? = null,
     val valueConceptId: UUID? = null,
     val valueText: String? = null,

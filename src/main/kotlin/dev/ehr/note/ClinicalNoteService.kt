@@ -5,8 +5,10 @@ import dev.ehr.encounter.EncounterRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyEvaluationRequest
@@ -83,6 +85,80 @@ class ClinicalNoteService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Note type concept is unknown")
         }
     }
+
+    fun amend(
+        principal: SecurityPrincipal,
+        noteId: ClinicalNoteId,
+        title: String?,
+        contentText: String?,
+        expectedVersion: Int,
+    ): ClinicalNote {
+        val decision = evaluate(principal, PolicyOperation.WRITE)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision, resourceId = noteId.value)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to amend clinical notes")
+        }
+        if (title == null && contentText == null) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "An amendment must change the title or content")
+        }
+        if (title?.isBlank() == true || contentText?.isBlank() == true) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Note title and content must not be blank")
+        }
+
+        val scope = tenantScope(principal)
+        try {
+            return transactionTemplate.execute {
+                val prior = clinicalNoteRepository.findById(scope, noteId)
+                    ?: throw NoteNotFoundForUpdate()
+                val updated = clinicalNoteRepository.amend(
+                    tenantScope = scope,
+                    noteId = noteId,
+                    title = title ?: prior.title,
+                    contentText = contentText ?: prior.contentText,
+                    expectedVersion = expectedVersion,
+                    updatedBy = principal.subject.userId,
+                )
+                provenanceRecorder.recordUpdated(
+                    principal = principal,
+                    patientId = prior.patientId.value,
+                    targetResourceType = "NOTE",
+                    targetResourceId = noteId.value,
+                    newVersion = updated.version,
+                    priorVersion = prior.version,
+                    priorState = prior,
+                    activity = ProvenanceActivity.AMENDED,
+                )
+                auditEventService.recordResourceAccess(
+                    decision = decision,
+                    operation = AuditOperation.UPDATE,
+                    outcome = AuditOutcome.SUCCESS,
+                    patientId = updated.patientId.value,
+                    resourceId = updated.id.value,
+                )
+                updated
+            }!!
+        } catch (exception: NoteNotFoundForUpdate) {
+            recordFailedUpdate(decision, noteId.value)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Note not found")
+        } catch (exception: StaleNoteUpdateException) {
+            recordFailedUpdate(decision, noteId.value)
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Note was modified concurrently")
+        }
+    }
+
+    private fun recordFailedUpdate(
+        decision: PolicyDecision,
+        resourceId: java.util.UUID,
+    ) {
+        auditEventService.recordResourceAccess(
+            decision = decision,
+            operation = AuditOperation.UPDATE,
+            outcome = AuditOutcome.FAILURE,
+            resourceId = resourceId,
+        )
+    }
+
+    private class NoteNotFoundForUpdate : RuntimeException()
 
     fun get(
         principal: SecurityPrincipal,

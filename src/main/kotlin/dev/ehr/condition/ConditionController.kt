@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -49,6 +50,22 @@ class ConditionController(
         ).toResponse()
     }
 
+    @PatchMapping("/conditions/{conditionId}")
+    fun update(
+        authentication: Authentication,
+        @PathVariable conditionId: UUID,
+        @Valid @RequestBody request: UpdateConditionRequest,
+    ): ConditionResponse =
+        conditionService.update(
+            principal = securityPrincipal(authentication),
+            conditionId = ConditionId(conditionId),
+            clinicalStatus = request.clinicalStatus,
+            verificationStatus = request.verificationStatus,
+            onsetDate = request.onsetDate,
+            abatementDate = request.abatementDate,
+            expectedVersion = request.expectedVersion!!,
+        ).toResponse()
+
     @GetMapping("/conditions/{conditionId}")
     fun get(
         authentication: Authentication,
@@ -80,6 +97,15 @@ data class RecordConditionRequest(
     @field:NotNull
     val codeConceptId: UUID?,
     val encounterId: UUID? = null,
+    val clinicalStatus: ConditionClinicalStatus? = null,
+    val verificationStatus: ConditionVerificationStatus? = null,
+    val onsetDate: LocalDate? = null,
+    val abatementDate: LocalDate? = null,
+)
+
+data class UpdateConditionRequest(
+    @field:NotNull
+    val expectedVersion: Int?,
     val clinicalStatus: ConditionClinicalStatus? = null,
     val verificationStatus: ConditionVerificationStatus? = null,
     val onsetDate: LocalDate? = null,

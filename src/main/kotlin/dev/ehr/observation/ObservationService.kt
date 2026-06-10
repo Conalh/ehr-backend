@@ -4,8 +4,10 @@ import dev.ehr.encounter.EncounterRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyEvaluationRequest
@@ -68,6 +70,74 @@ class ObservationService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Observation concept is unknown")
         }
     }
+
+    fun amend(
+        principal: SecurityPrincipal,
+        observationId: ObservationId,
+        newValue: ObservationValue,
+        expectedVersion: Int,
+    ): Observation {
+        val decision = evaluate(principal, PolicyOperation.WRITE)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision, resourceId = observationId.value)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to amend observations")
+        }
+
+        val scope = tenantScope(principal)
+        try {
+            return transactionTemplate.execute {
+                val prior = observationRepository.findById(scope, observationId)
+                    ?: throw ObservationNotFoundForUpdate()
+                val updated = observationRepository.amend(
+                    tenantScope = scope,
+                    observationId = observationId,
+                    newValue = newValue,
+                    expectedVersion = expectedVersion,
+                    updatedBy = principal.subject.userId,
+                )
+                provenanceRecorder.recordUpdated(
+                    principal = principal,
+                    patientId = prior.patientId.value,
+                    targetResourceType = "OBSERVATION",
+                    targetResourceId = observationId.value,
+                    newVersion = updated.version,
+                    priorVersion = prior.version,
+                    priorState = prior,
+                    activity = ProvenanceActivity.AMENDED,
+                )
+                auditEventService.recordResourceAccess(
+                    decision = decision,
+                    operation = AuditOperation.UPDATE,
+                    outcome = AuditOutcome.SUCCESS,
+                    patientId = updated.patientId.value,
+                    resourceId = updated.id.value,
+                )
+                updated
+            }!!
+        } catch (exception: ObservationNotFoundForUpdate) {
+            recordFailedUpdate(decision, observationId.value)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Observation not found")
+        } catch (exception: StaleObservationUpdateException) {
+            recordFailedUpdate(decision, observationId.value)
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Observation was modified concurrently")
+        } catch (exception: DataIntegrityViolationException) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Observation value is invalid")
+        }
+    }
+
+    private fun recordFailedUpdate(
+        decision: PolicyDecision,
+        resourceId: java.util.UUID,
+    ) {
+        auditEventService.recordResourceAccess(
+            decision = decision,
+            operation = AuditOperation.UPDATE,
+            outcome = AuditOutcome.FAILURE,
+            resourceId = resourceId,
+        )
+    }
+
+    private class ObservationNotFoundForUpdate : RuntimeException()
 
     fun get(
         principal: SecurityPrincipal,

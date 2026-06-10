@@ -12,6 +12,8 @@ import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 import java.util.UUID
 
+class StaleNoteUpdateException(message: String) : RuntimeException(message)
+
 @Repository
 class ClinicalNoteRepository(
     private val jdbcTemplate: JdbcTemplate,
@@ -71,6 +73,37 @@ class ClinicalNoteRepository(
             tenantScope.organizationId.value,
             noteId.value,
         ).singleOrNull()
+
+    fun amend(
+        tenantScope: TenantScope,
+        noteId: ClinicalNoteId,
+        title: String,
+        contentText: String,
+        expectedVersion: Int,
+        updatedBy: UserId?,
+    ): ClinicalNote =
+        jdbcTemplate.query(
+            """
+            update clinical_notes
+            set title = ?,
+                content_text = ?,
+                version = version + 1,
+                updated_at = now(),
+                updated_by = coalesce(?, updated_by)
+            where organization_id = ?
+              and id = ?
+              and version = ?
+            returning $COLUMNS
+            """.trimIndent(),
+            rowMapper,
+            title,
+            contentText,
+            updatedBy?.value,
+            tenantScope.organizationId.value,
+            noteId.value,
+            expectedVersion,
+        ).singleOrNull()
+            ?: throw StaleNoteUpdateException("note was modified concurrently; amendment not applied")
 
     fun findByPatient(
         tenantScope: TenantScope,

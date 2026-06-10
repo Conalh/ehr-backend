@@ -13,6 +13,8 @@ import java.sql.Date
 import java.sql.ResultSet
 import java.util.UUID
 
+class StaleConditionUpdateException(message: String) : RuntimeException(message)
+
 @Repository
 class ConditionRepository(
     private val jdbcTemplate: JdbcTemplate,
@@ -77,6 +79,43 @@ class ConditionRepository(
             tenantScope.organizationId.value,
             conditionId.value,
         ).singleOrNull()
+
+    fun update(
+        tenantScope: TenantScope,
+        conditionId: ConditionId,
+        clinicalStatus: ConditionClinicalStatus,
+        verificationStatus: ConditionVerificationStatus,
+        onsetDate: java.time.LocalDate?,
+        abatementDate: java.time.LocalDate?,
+        expectedVersion: Int,
+        updatedBy: UserId?,
+    ): Condition =
+        jdbcTemplate.query(
+            """
+            update conditions
+            set clinical_status = ?,
+                verification_status = ?,
+                onset_date = ?,
+                abatement_date = ?,
+                version = version + 1,
+                updated_at = now(),
+                updated_by = coalesce(?, updated_by)
+            where organization_id = ?
+              and id = ?
+              and version = ?
+            returning $COLUMNS
+            """.trimIndent(),
+            rowMapper,
+            clinicalStatus.dbValue,
+            verificationStatus.dbValue,
+            onsetDate?.let(Date::valueOf),
+            abatementDate?.let(Date::valueOf),
+            updatedBy?.value,
+            tenantScope.organizationId.value,
+            conditionId.value,
+            expectedVersion,
+        ).singleOrNull()
+            ?: throw StaleConditionUpdateException("condition was modified concurrently; update not applied")
 
     fun findByPatient(
         tenantScope: TenantScope,

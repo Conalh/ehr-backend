@@ -4,8 +4,10 @@ import dev.ehr.encounter.EncounterRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyEvaluationRequest
@@ -71,6 +73,90 @@ class ConditionService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Condition code concept is unknown")
         }
     }
+
+    fun update(
+        principal: SecurityPrincipal,
+        conditionId: ConditionId,
+        clinicalStatus: ConditionClinicalStatus?,
+        verificationStatus: ConditionVerificationStatus?,
+        onsetDate: java.time.LocalDate?,
+        abatementDate: java.time.LocalDate?,
+        expectedVersion: Int,
+    ): Condition {
+        val decision = evaluate(principal, PolicyOperation.WRITE)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision, resourceId = conditionId.value)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to update conditions")
+        }
+
+        val scope = tenantScope(principal)
+        try {
+            return transactionTemplate.execute {
+                val prior = conditionRepository.findById(scope, conditionId)
+                    ?: throw ConditionNotFoundForUpdate()
+                val newClinicalStatus = clinicalStatus ?: prior.clinicalStatus
+                val newVerificationStatus = verificationStatus ?: prior.verificationStatus
+                val newOnsetDate = onsetDate ?: prior.onsetDate
+                val newAbatementDate = abatementDate ?: prior.abatementDate
+                if (newOnsetDate != null && newAbatementDate != null && newAbatementDate < newOnsetDate) {
+                    throw ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Abatement date must not be before onset date",
+                    )
+                }
+                val updated = conditionRepository.update(
+                    tenantScope = scope,
+                    conditionId = conditionId,
+                    clinicalStatus = newClinicalStatus,
+                    verificationStatus = newVerificationStatus,
+                    onsetDate = newOnsetDate,
+                    abatementDate = newAbatementDate,
+                    expectedVersion = expectedVersion,
+                    updatedBy = principal.subject.userId,
+                )
+                val voided = newVerificationStatus == ConditionVerificationStatus.ENTERED_IN_ERROR &&
+                    prior.verificationStatus != ConditionVerificationStatus.ENTERED_IN_ERROR
+                provenanceRecorder.recordUpdated(
+                    principal = principal,
+                    patientId = prior.patientId.value,
+                    targetResourceType = "CONDITION",
+                    targetResourceId = conditionId.value,
+                    newVersion = updated.version,
+                    priorVersion = prior.version,
+                    priorState = prior,
+                    activity = if (voided) ProvenanceActivity.ENTERED_IN_ERROR else ProvenanceActivity.UPDATED,
+                )
+                auditEventService.recordResourceAccess(
+                    decision = decision,
+                    operation = AuditOperation.UPDATE,
+                    outcome = AuditOutcome.SUCCESS,
+                    patientId = updated.patientId.value,
+                    resourceId = updated.id.value,
+                )
+                updated
+            }!!
+        } catch (exception: ConditionNotFoundForUpdate) {
+            recordFailedUpdate(decision, conditionId.value)
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Condition not found")
+        } catch (exception: StaleConditionUpdateException) {
+            recordFailedUpdate(decision, conditionId.value)
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Condition was modified concurrently")
+        }
+    }
+
+    private fun recordFailedUpdate(
+        decision: PolicyDecision,
+        resourceId: java.util.UUID,
+    ) {
+        auditEventService.recordResourceAccess(
+            decision = decision,
+            operation = AuditOperation.UPDATE,
+            outcome = AuditOutcome.FAILURE,
+            resourceId = resourceId,
+        )
+    }
+
+    private class ConditionNotFoundForUpdate : RuntimeException()
 
     fun get(
         principal: SecurityPrincipal,

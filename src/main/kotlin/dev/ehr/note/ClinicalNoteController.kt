@@ -10,6 +10,7 @@ import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -38,6 +39,20 @@ class ClinicalNoteController(
             typeConceptId = CodeableConceptId(request.typeConceptId!!),
             title = request.title,
             contentText = request.contentText,
+        ).toResponse()
+
+    @PatchMapping("/notes/{noteId}")
+    fun amend(
+        authentication: Authentication,
+        @PathVariable noteId: UUID,
+        @Valid @RequestBody request: AmendNoteRequest,
+    ): ClinicalNoteResponse =
+        clinicalNoteService.amend(
+            principal = securityPrincipal(authentication),
+            noteId = ClinicalNoteId(noteId),
+            title = request.title,
+            contentText = request.contentText,
+            expectedVersion = request.expectedVersion!!,
         ).toResponse()
 
     @GetMapping("/notes/{noteId}")
@@ -74,6 +89,13 @@ data class WriteNoteRequest(
     val title: String,
     @field:NotBlank
     val contentText: String,
+)
+
+data class AmendNoteRequest(
+    @field:NotNull
+    val expectedVersion: Int?,
+    val title: String? = null,
+    val contentText: String? = null,
 )
 
 data class ClinicalNoteResponse(
