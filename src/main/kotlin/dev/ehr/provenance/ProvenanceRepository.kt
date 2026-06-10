@@ -49,6 +49,22 @@ class ProvenanceRepository(
             command.syntheticGenerationRunId,
         )!!
 
+    fun findById(
+        tenantScope: TenantScope,
+        provenanceId: UUID,
+    ): ProvenanceEvent? =
+        jdbcTemplate.query(
+            """
+            select $COLUMNS
+            from provenance_events
+            where organization_id = ?
+              and id = ?
+            """.trimIndent(),
+            rowMapper,
+            tenantScope.organizationId.value,
+            provenanceId,
+        ).singleOrNull()
+
     fun findByTarget(
         tenantScope: TenantScope,
         targetResourceType: String,

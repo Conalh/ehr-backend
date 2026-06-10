@@ -15,6 +15,7 @@ enum class PolicyResourceType {
     MEDICATION,
     NOTE,
     CHART,
+    PROVENANCE,
     SYSTEM,
 }
 

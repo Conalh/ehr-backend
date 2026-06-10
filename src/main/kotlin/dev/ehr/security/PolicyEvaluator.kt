@@ -104,7 +104,7 @@ class PolicyEvaluator {
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v8"
+        const val POLICY_VERSION = "policy-spine-v9"
 
         private val rules: Map<PolicyResourceType, Map<PolicyOperation, PolicyRule>> = mapOf(
             PolicyResourceType.ORGANIZATION to mapOf(
@@ -304,6 +304,20 @@ class PolicyEvaluator {
                     ),
                     scopes = setOf(
                         "user/*.read",
+                        "system/*.read",
+                    ),
+                ),
+            ),
+            // Provenance reveals clinical-record metadata: clinician-only.
+            PolicyResourceType.PROVENANCE to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    roles = setOf(
+                        MembershipRole.CLINICIAN,
+                    ),
+                    scopes = setOf(
+                        "user/Provenance.read",
+                        "user/*.read",
+                        "system/Provenance.read",
                         "system/*.read",
                     ),
                 ),
