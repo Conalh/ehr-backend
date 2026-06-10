@@ -248,7 +248,12 @@ class DevJwtAuthenticationIntegrationTest : PostgresIntegrationTest() {
 
     @Test
     fun `fhir path requires authentication by default`() {
+        // The CapabilityStatement is public by FHIR convention; clinical routes are not.
         mockMvc.get("/fhir/r4/metadata")
+            .andExpect {
+                status { isOk() }
+            }
+        mockMvc.get("/fhir/r4/Patient/${UUID.randomUUID()}")
             .andExpect {
                 status { isUnauthorized() }
             }

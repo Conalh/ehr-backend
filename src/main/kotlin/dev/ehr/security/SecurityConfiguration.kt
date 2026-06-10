@@ -44,6 +44,8 @@ class SecurityConfiguration {
                 authorize
                     .requestMatchers("/internal/health", "/actuator/health", "/actuator/health/**").permitAll()
                     .requestMatchers("/.well-known/**", "/oauth/**").permitAll()
+                    // FHIR convention: the CapabilityStatement is discoverable without auth.
+                    .requestMatchers("/fhir/r4/metadata").permitAll()
                     .requestMatchers("/api/v1/**", "/fhir/r4/**").authenticated()
                     .anyRequest().permitAll()
             }
