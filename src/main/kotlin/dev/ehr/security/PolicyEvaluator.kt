@@ -132,7 +132,7 @@ class PolicyEvaluator {
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v12"
+        const val POLICY_VERSION = "policy-spine-v13"
 
         private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
         private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)
@@ -167,6 +167,12 @@ class PolicyEvaluator {
             ),
             PolicyResourceType.CHART to mapOf(
                 PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
+            ),
+            // Client management is an organization-settings function: admin-only,
+            // and like the chart it needs wildcard scopes (it is not a FHIR resource).
+            PolicyResourceType.OAUTH_CLIENT to mapOf(
+                PolicyOperation.READ to PolicyRule(ADMINS, "*", requiresWildcardResource = true),
+                PolicyOperation.WRITE to PolicyRule(ADMINS, "*", requiresWildcardResource = true),
             ),
         )
     }

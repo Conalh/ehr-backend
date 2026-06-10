@@ -18,6 +18,7 @@ enum class PolicyResourceType {
     PROVENANCE,
     ORDER,
     DIAGNOSTIC_REPORT,
+    OAUTH_CLIENT,
     SYSTEM,
 }
 
