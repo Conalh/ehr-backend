@@ -5,6 +5,7 @@ import dev.ehr.encounter.EncounterRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -27,6 +28,7 @@ class ClinicalNoteService(
     private val clinicalNoteRepository: ClinicalNoteRepository,
     private val encounterRepository: EncounterRepository,
     private val patientRepository: PatientRepository,
+    private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun write(
@@ -61,6 +63,12 @@ class ClinicalNoteService(
                         contentText = contentText,
                         createdBy = principal.subject.userId,
                     ),
+                )
+                provenanceRecorder.recordCreated(
+                    principal = principal,
+                    patientId = note.patientId.value,
+                    targetResourceType = "NOTE",
+                    targetResourceId = note.id.value,
                 )
                 auditEventService.recordResourceAccess(
                     decision = decision,

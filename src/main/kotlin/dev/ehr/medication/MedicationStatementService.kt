@@ -4,6 +4,7 @@ import dev.ehr.encounter.EncounterRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -25,6 +26,7 @@ class MedicationStatementService(
     private val medicationStatementRepository: MedicationStatementRepository,
     private val patientRepository: PatientRepository,
     private val encounterRepository: EncounterRepository,
+    private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun record(
@@ -50,6 +52,12 @@ class MedicationStatementService(
         try {
             return transactionTemplate.execute {
                 val statement = medicationStatementRepository.create(command)
+                provenanceRecorder.recordCreated(
+                    principal = principal,
+                    patientId = statement.patientId.value,
+                    targetResourceType = "MEDICATION",
+                    targetResourceId = statement.id.value,
+                )
                 auditEventService.recordResourceAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,

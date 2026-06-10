@@ -4,6 +4,7 @@ import dev.ehr.encounter.EncounterRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -25,6 +26,7 @@ class ObservationService(
     private val observationRepository: ObservationRepository,
     private val patientRepository: PatientRepository,
     private val encounterRepository: EncounterRepository,
+    private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun record(
@@ -45,6 +47,12 @@ class ObservationService(
         try {
             return transactionTemplate.execute {
                 val observation = observationRepository.create(command)
+                provenanceRecorder.recordCreated(
+                    principal = principal,
+                    patientId = observation.patientId.value,
+                    targetResourceType = "OBSERVATION",
+                    targetResourceId = observation.id.value,
+                )
                 auditEventService.recordResourceAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,

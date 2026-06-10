@@ -3,6 +3,7 @@ package dev.ehr.encounter
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -24,6 +25,7 @@ class EncounterService(
     private val auditEventService: AuditEventService,
     private val encounterRepository: EncounterRepository,
     private val patientRepository: PatientRepository,
+    private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun open(
@@ -46,6 +48,12 @@ class EncounterService(
         try {
             return transactionTemplate.execute {
                 val encounter = encounterRepository.create(command)
+                provenanceRecorder.recordCreated(
+                    principal = principal,
+                    patientId = encounter.patientId.value,
+                    targetResourceType = "ENCOUNTER",
+                    targetResourceId = encounter.id.value,
+                )
                 auditEventService.recordResourceAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
@@ -139,8 +147,19 @@ class EncounterService(
         val scope = tenantScope(principal)
         try {
             return transactionTemplate.execute {
+                val prior = encounterRepository.findById(scope, encounterId)
+                    ?: throw EncounterNotFoundForTransition()
                 val encounter = encounterRepository.transition(scope, encounterId, command)
                     ?: throw EncounterNotFoundForTransition()
+                provenanceRecorder.recordUpdated(
+                    principal = principal,
+                    patientId = encounter.patientId.value,
+                    targetResourceType = "ENCOUNTER",
+                    targetResourceId = encounter.id.value,
+                    newVersion = encounter.version,
+                    priorVersion = prior.version,
+                    priorState = prior,
+                )
                 auditEventService.recordResourceAccess(
                     decision = decision,
                     operation = AuditOperation.UPDATE,

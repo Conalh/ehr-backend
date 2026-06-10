@@ -8,6 +8,7 @@ import dev.ehr.security.PolicyEvaluationRequest
 import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
+import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.SecurityPrincipal
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
@@ -26,6 +27,7 @@ class PatientService(
     private val policyEvaluator: PolicyEvaluator,
     private val auditEventService: AuditEventService,
     private val patientRepository: PatientRepository,
+    private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun create(
@@ -47,6 +49,12 @@ class PatientService(
                 val identifiers = identifierCommands.map { identifierCommand ->
                     patientRepository.addIdentifier(tenantScope, patient.id, identifierCommand)
                 }
+                provenanceRecorder.recordCreated(
+                    principal = principal,
+                    patientId = patient.id.value,
+                    targetResourceType = "PATIENT",
+                    targetResourceId = patient.id.value,
+                )
                 auditEventService.recordResourceAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
