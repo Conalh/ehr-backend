@@ -43,6 +43,7 @@ class SecurityConfiguration {
             .authorizeHttpRequests { authorize ->
                 authorize
                     .requestMatchers("/internal/health", "/actuator/health", "/actuator/health/**").permitAll()
+                    .requestMatchers("/.well-known/**", "/oauth/**").permitAll()
                     .requestMatchers("/api/v1/**", "/fhir/r4/**").authenticated()
                     .anyRequest().permitAll()
             }
