@@ -186,7 +186,7 @@ class ChartApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("READ", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
         assertEquals(patient.id.value.toString(), audit.patientId)
-        assertEquals("policy-spine-v13", audit.policyVersion)
+        assertEquals("policy-spine-v14", audit.policyVersion)
     }
 
     @Test

@@ -19,6 +19,7 @@ enum class PolicyResourceType {
     ORDER,
     DIAGNOSTIC_REPORT,
     OAUTH_CLIENT,
+    EXPORT,
     SYSTEM,
 }
 

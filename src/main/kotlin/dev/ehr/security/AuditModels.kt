@@ -11,6 +11,8 @@ enum class AuditOperation(val dbValue: String) {
     SEARCH("SEARCH"),
     CREATE("CREATE"),
     UPDATE("UPDATE"),
+    EXPORT("EXPORT"),
+    SYSTEM("SYSTEM"),
     AUTHORIZATION_DENIED("AUTHORIZATION_DENIED"),
 }
 

@@ -132,7 +132,7 @@ class PolicyEvaluator {
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v13"
+        const val POLICY_VERSION = "policy-spine-v14"
 
         private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
         private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)
@@ -173,6 +173,12 @@ class PolicyEvaluator {
             PolicyResourceType.OAUTH_CLIENT to mapOf(
                 PolicyOperation.READ to PolicyRule(ADMINS, "*", requiresWildcardResource = true),
                 PolicyOperation.WRITE to PolicyRule(ADMINS, "*", requiresWildcardResource = true),
+            ),
+            // Bulk export covers the whole population: clinician-only with wildcard scopes.
+            // System-app requesters arrive with system-app principals (deferred).
+            PolicyResourceType.EXPORT to mapOf(
+                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
+                PolicyOperation.WRITE to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
             ),
         )
     }

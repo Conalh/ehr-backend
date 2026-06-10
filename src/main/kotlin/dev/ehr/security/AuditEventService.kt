@@ -1,5 +1,7 @@
 package dev.ehr.security
 
+import dev.ehr.identity.OrganizationId
+import dev.ehr.identity.UserId
 import dev.ehr.runtime.CorrelationIdFilter
 import org.slf4j.MDC
 import org.springframework.stereotype.Service
@@ -44,6 +46,33 @@ class AuditEventService(
                 outcome = outcome,
                 policyVersion = decision.policyVersion,
                 policyReasonCode = decision.reasonCode.name,
+                correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
+            ),
+        )
+
+    /**
+     * For background workers (e.g. the export processor) acting on behalf of a
+     * recorded requester without a live security principal or policy decision.
+     */
+    @Transactional
+    fun recordBackgroundEvent(
+        organizationId: OrganizationId,
+        subjectUserId: UserId?,
+        resourceType: String,
+        operation: AuditOperation,
+        outcome: AuditOutcome,
+        resourceId: UUID? = null,
+    ): AuditEventRecord =
+        auditEventRepository.append(
+            AuditEventCommand(
+                organizationId = organizationId,
+                subjectUserId = subjectUserId,
+                resourceType = resourceType,
+                resourceId = resourceId,
+                operation = operation,
+                outcome = outcome,
+                policyVersion = null,
+                policyReasonCode = null,
                 correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
             ),
         )

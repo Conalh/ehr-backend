@@ -137,7 +137,7 @@ class ObservationApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("CREATE", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
         assertEquals(patient.id.value.toString(), audit.patientId)
-        assertEquals("policy-spine-v13", audit.policyVersion)
+        assertEquals("policy-spine-v14", audit.policyVersion)
     }
 
     @Test
