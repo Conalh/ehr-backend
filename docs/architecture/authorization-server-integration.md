@@ -1,7 +1,11 @@
 # Authorization Server Integration Design
 
 Date: 2026-06-11
-Status: **Draft — awaiting review.** Decisions below are recommendations.
+Status: **Accepted 2026-06-11.** Decisions: 1=B (embedded — this project is
+GitHub-first, one runnable service; the issuer/JWKS seam keeps extraction
+mechanical), 2=AS1→AS4 as proposed, 3=EXPORT-only SYSTEM_APP first,
+4=5-minute access / 90-day rotating refresh, 5=synthetic patient-picker at
+AS3.
 
 ## Problem
 
