@@ -38,6 +38,21 @@ All security-critical settings live under the validated `ehr.*` prefix
 | `ehr.compartment.encounter-derived-expiry-days` | 30 | encounter-derived care-team memberships auto-end this long after the sustaining encounter finishes |
 | `EHR_DB_URL` / `EHR_DB_USERNAME` / `EHR_DB_PASSWORD` | local compose values | |
 
+### Tenant row-level security
+
+Every organization-scoped table carries `FORCE ROW LEVEL SECURITY` with a
+tenant-isolation policy keyed on the `ehr.organization_id` GUC, which the
+application sets on every borrowed connection (empty when no request context —
+migrations, fixtures, and background workers bypass by design).
+
+**Production requirement: the application must connect as a non-superuser
+role.** Postgres superusers bypass RLS unconditionally — `FORCE` covers the
+table owner, but nothing covers a superuser. The local compose and test
+containers connect as the image superuser, so RLS is real defense-in-depth
+only in a deployment with a restricted application role. If a session pooler
+(pgBouncer in transaction mode) is introduced, session-level GUCs no longer
+stick to a logical session — revisit the set-on-borrow convention first.
+
 ### Compartment enforcement
 
 Compartment authorization (`docs/architecture/compartment-authorization.md`)

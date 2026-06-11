@@ -70,6 +70,12 @@ class SecurityConfiguration {
     fun rateLimitFilter(properties: EhrProperties): RateLimitFilter =
         RateLimitFilter(properties)
 
+    // Registered here rather than as @Component so MVC test slices stay
+    // unaffected (the RateLimitFilter lesson). Runs after the security filter
+    // chain, so the authenticated principal is available.
+    @Bean
+    fun tenantContextFilter(): TenantContextFilter = TenantContextFilter()
+
     @Bean
     fun jwtDecoder(properties: EhrProperties): JwtDecoder =
         NimbusJwtDecoder.withSecretKey(devJwtSecretKey(properties.security.devJwtSecret))
