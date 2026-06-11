@@ -52,6 +52,9 @@ class ClinicalNoteService(
         val scope = tenantScope(principal)
         val encounter = encounterRepository.findById(scope, encounterId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
+        val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, encounter.patientId.value)
 
         try {
             return transactionTemplate.execute {
@@ -73,7 +76,7 @@ class ClinicalNoteService(
                     targetResourceId = note.id.value,
                 )
                 auditEventService.recordResourceAccess(
-                    decision = decision,
+                    decision = compartmentDecision,
                     operation = AuditOperation.CREATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = note.patientId.value,
@@ -128,8 +131,10 @@ class ClinicalNoteService(
                     priorState = prior,
                     activity = ProvenanceActivity.AMENDED,
                 )
+                // Re-evaluate with the discovered patient so the audit row
+                // carries the shadow relationship basis (H3 enforces here).
                 auditEventService.recordResourceAccess(
-                    decision = decision,
+                    decision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value),
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
@@ -181,8 +186,10 @@ class ClinicalNoteService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Note not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, PolicyOperation.READ, note.patientId.value),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = note.patientId.value,
@@ -195,7 +202,7 @@ class ClinicalNoteService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<ClinicalNote> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read clinical notes")
@@ -225,12 +232,14 @@ class ClinicalNoteService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.NOTE,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

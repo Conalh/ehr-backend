@@ -27,7 +27,7 @@ class PolicyModelsTest {
             operation = PolicyOperation.READ,
             roleBasis = listOf(MembershipRole.ORG_ADMIN),
             scopeBasis = scopes,
-            relationshipBasis = "deferred",
+            relationshipBasis = RelationshipBasis.CARE_TEAM_MEMBER,
             purposeOfUse = "deferred",
             policyVersion = "policy-spine-v1",
             reasonCode = PolicyReasonCode.ALLOWED,
@@ -41,7 +41,7 @@ class PolicyModelsTest {
         assertEquals(PolicyOperation.READ, decision.operation)
         assertEquals(listOf(MembershipRole.ORG_ADMIN), decision.roleBasis)
         assertEquals(scopes, decision.scopeBasis)
-        assertEquals("deferred", decision.relationshipBasis)
+        assertEquals(RelationshipBasis.CARE_TEAM_MEMBER, decision.relationshipBasis)
         assertEquals("deferred", decision.purposeOfUse)
         assertEquals("policy-spine-v1", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)

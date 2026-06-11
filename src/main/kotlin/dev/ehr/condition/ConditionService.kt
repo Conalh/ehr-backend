@@ -35,7 +35,7 @@ class ConditionService(
         principal: SecurityPrincipal,
         command: ConditionCreateCommand,
     ): Condition {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
+        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record conditions")
@@ -114,6 +114,9 @@ class ConditionService(
                     expectedVersion = expectedVersion,
                     updatedBy = principal.subject.userId,
                 )
+                // Re-evaluate with the discovered patient so the audit row
+                // carries the shadow relationship basis (H3 enforces here).
+                val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value)
                 val voided = newVerificationStatus == ConditionVerificationStatus.ENTERED_IN_ERROR &&
                     prior.verificationStatus != ConditionVerificationStatus.ENTERED_IN_ERROR
                 provenanceRecorder.recordUpdated(
@@ -127,7 +130,7 @@ class ConditionService(
                     activity = if (voided) ProvenanceActivity.ENTERED_IN_ERROR else ProvenanceActivity.UPDATED,
                 )
                 auditEventService.recordResourceAccess(
-                    decision = decision,
+                    decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
@@ -179,8 +182,10 @@ class ConditionService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Condition not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, PolicyOperation.READ, condition.patientId.value),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = condition.patientId.value,
@@ -193,7 +198,7 @@ class ConditionService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Condition> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read conditions")
@@ -223,12 +228,14 @@ class ConditionService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.CONDITION,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

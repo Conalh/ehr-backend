@@ -44,8 +44,10 @@ class ProvenanceQueryService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Provenance not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, event.patientId),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = event.patientId,
@@ -66,11 +68,14 @@ class ProvenanceQueryService(
         }
 
         val events = provenanceRepository.findByTarget(tenantScope(principal), targetResourceType, targetResourceId)
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
+        val patientId = events.firstOrNull()?.patientId
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = if (patientId != null) evaluate(principal, patientId) else decision,
             operation = AuditOperation.SEARCH,
             outcome = AuditOutcome.SUCCESS,
-            patientId = events.firstOrNull()?.patientId,
+            patientId = patientId,
             resourceId = targetResourceId,
         )
         return events
@@ -80,7 +85,7 @@ class ProvenanceQueryService(
         principal: SecurityPrincipal,
         patientId: UUID,
     ): List<ProvenanceEvent> {
-        val decision = evaluate(principal)
+        val decision = evaluate(principal, patientId)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
@@ -107,15 +112,18 @@ class ProvenanceQueryService(
         return events
     }
 
-    private fun evaluate(principal: SecurityPrincipal) =
-        policyEvaluator.evaluate(
-            principal = principal,
-            request = PolicyEvaluationRequest(
-                resourceType = PolicyResourceType.PROVENANCE,
-                operation = PolicyOperation.READ,
-                organizationId = principal.organization.organizationId,
-            ),
-        )
+    private fun evaluate(
+        principal: SecurityPrincipal,
+        patientId: UUID? = null,
+    ) = policyEvaluator.evaluate(
+        principal = principal,
+        request = PolicyEvaluationRequest(
+            resourceType = PolicyResourceType.PROVENANCE,
+            operation = PolicyOperation.READ,
+            organizationId = principal.organization.organizationId,
+            patientId = patientId,
+        ),
+    )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =
         TenantScope(principal.organization.organizationId)

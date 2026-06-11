@@ -60,6 +60,7 @@ class ChartService(
                 resourceType = PolicyResourceType.CHART,
                 operation = PolicyOperation.READ,
                 organizationId = principal.organization.organizationId,
+                patientId = patientId.value,
             ),
         )
         if (!decision.allowed) {

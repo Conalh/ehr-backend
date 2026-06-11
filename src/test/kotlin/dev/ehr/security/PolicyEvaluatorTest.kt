@@ -12,7 +12,12 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class PolicyEvaluatorTest {
-    private val evaluator = PolicyEvaluator()
+    private val evaluator = PolicyEvaluator { _, _, _ -> null }
+
+    /** Fails the test if the evaluator consults the resolver at all. */
+    private val untouchableResolver = RelationshipResolver { _, _, _ ->
+        throw AssertionError("relationship resolver must not be consulted")
+    }
 
     @Test
     fun `allows org admin organization read with compatible user scope`() {
@@ -40,7 +45,7 @@ class PolicyEvaluatorTest {
         assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(null, decision.relationshipBasis)
         assertEquals(null, decision.purposeOfUse)
-        assertEquals("policy-spine-v15", decision.policyVersion)
+        assertEquals("policy-spine-v16", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
     }
 
@@ -438,6 +443,124 @@ class PolicyEvaluatorTest {
         )
         assertFalse(denied.allowed)
         assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, denied.reasonCode)
+    }
+
+    @Test
+    fun `clinical record rules shadow resolve the relationship when the patient is known`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val patientId = UUID.randomUUID()
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        )
+        val resolver = RelationshipResolver { resolvedOrg, resolvedUser, resolvedPatient ->
+            assertEquals(organizationId, resolvedOrg)
+            assertEquals(clinician.subject.userId, resolvedUser)
+            assertEquals(patientId, resolvedPatient)
+            RelationshipBasis.CARE_TEAM_MEMBER
+        }
+
+        val decision = PolicyEvaluator(resolver).evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = patientId,
+            ),
+        )
+
+        assertTrue(decision.allowed)
+        assertEquals(RelationshipBasis.CARE_TEAM_MEMBER, decision.relationshipBasis)
+    }
+
+    @Test
+    fun `an allowed clinical read without a relationship stays allowed with a null basis`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        )
+
+        val decision = PolicyEvaluator { _, _, _ -> null }.evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.OBSERVATION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+
+        assertTrue(decision.allowed)
+        assertEquals(null, decision.relationshipBasis)
+    }
+
+    @Test
+    fun `org wide rules never consult the resolver even with a patient in the request`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read user/*.write",
+        )
+
+        listOf(PolicyResourceType.PATIENT, PolicyResourceType.ENCOUNTER, PolicyResourceType.CARE_TEAM)
+            .forEach { resourceType ->
+                val decision = PolicyEvaluator(untouchableResolver).evaluate(
+                    clinician,
+                    PolicyEvaluationRequest(
+                        resourceType = resourceType,
+                        operation = PolicyOperation.READ,
+                        organizationId = organizationId,
+                        patientId = UUID.randomUUID(),
+                    ),
+                )
+                assertTrue(decision.allowed, "expected $resourceType read to be allowed")
+                assertEquals(null, decision.relationshipBasis)
+            }
+    }
+
+    @Test
+    fun `the resolver is not consulted without a patient or on denied decisions`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+
+        // No patient in the request.
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        )
+        val noPatient = PolicyEvaluator(untouchableResolver).evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+            ),
+        )
+        assertTrue(noPatient.allowed)
+        assertEquals(null, noPatient.relationshipBasis)
+
+        // Role denial precedes relationship interest.
+        val staff = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.STAFF),
+            scopes = "user/*.read",
+        )
+        val denied = PolicyEvaluator(untouchableResolver).evaluate(
+            staff,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+        assertFalse(denied.allowed)
+        assertEquals(null, denied.relationshipBasis)
     }
 
     private fun encounterRequest(

@@ -35,7 +35,7 @@ class ObservationService(
         principal: SecurityPrincipal,
         command: ObservationCreateCommand,
     ): Observation {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
+        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record observations")
@@ -105,8 +105,10 @@ class ObservationService(
                     priorState = prior,
                     activity = ProvenanceActivity.AMENDED,
                 )
+                // Re-evaluate with the discovered patient so the audit row
+                // carries the shadow relationship basis (H3 enforces here).
                 auditEventService.recordResourceAccess(
-                    decision = decision,
+                    decision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value),
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
@@ -160,8 +162,10 @@ class ObservationService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Observation not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, PolicyOperation.READ, observation.patientId.value),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = observation.patientId.value,
@@ -175,7 +179,7 @@ class ObservationService(
         patientId: PatientId,
         category: ObservationCategory? = null,
     ): List<Observation> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read observations")
@@ -205,12 +209,14 @@ class ObservationService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.OBSERVATION,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

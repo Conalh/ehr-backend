@@ -36,7 +36,7 @@ class OrderService(
         principal: SecurityPrincipal,
         command: OrderCreateCommand,
     ): Order {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
+        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to place orders")
@@ -93,8 +93,10 @@ class OrderService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, PolicyOperation.READ, order.patientId.value),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = order.patientId.value,
@@ -107,7 +109,7 @@ class OrderService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Order> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read orders")
@@ -166,8 +168,10 @@ class OrderService(
                         ProvenanceActivity.UPDATED
                     },
                 )
+                // Re-evaluate with the discovered patient so the audit row
+                // carries the shadow relationship basis (H3 enforces here).
                 auditEventService.recordResourceAccess(
-                    decision = decision,
+                    decision = evaluate(principal, PolicyOperation.WRITE, order.patientId.value),
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = order.patientId.value,
@@ -205,12 +209,14 @@ class OrderService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.ORDER,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

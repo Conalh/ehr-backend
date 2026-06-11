@@ -23,6 +23,7 @@ class AuditEventService(
                 outcome = if (decision.allowed) AuditOutcome.SUCCESS else AuditOutcome.DENIED,
                 policyVersion = decision.policyVersion,
                 policyReasonCode = decision.reasonCode.name,
+                relationshipBasis = decision.relationshipBasis?.dbValue,
                 correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
             ),
         )
@@ -46,6 +47,7 @@ class AuditEventService(
                 outcome = outcome,
                 policyVersion = decision.policyVersion,
                 policyReasonCode = decision.reasonCode.name,
+                relationshipBasis = decision.relationshipBasis?.dbValue,
                 correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
             ),
         )

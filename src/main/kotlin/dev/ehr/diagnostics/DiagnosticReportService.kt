@@ -80,6 +80,9 @@ class DiagnosticReportService(
                 )
             }
         }
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
+        val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, order.patientId.value)
 
         try {
             return transactionTemplate.execute {
@@ -121,7 +124,7 @@ class DiagnosticReportService(
                     targetResourceId = report.id.value,
                 )
                 auditEventService.recordResourceAccess(
-                    decision = decision,
+                    decision = compartmentDecision,
                     operation = AuditOperation.CREATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = report.patientId.value,
@@ -155,8 +158,10 @@ class DiagnosticReportService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Diagnostic report not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, PolicyOperation.READ, report.patientId.value),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = report.patientId.value,
@@ -169,7 +174,7 @@ class DiagnosticReportService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<DiagnosticReport> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read diagnostic reports")
@@ -199,12 +204,14 @@ class DiagnosticReportService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.DIAGNOSTIC_REPORT,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

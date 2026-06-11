@@ -4,7 +4,9 @@ import dev.ehr.identity.MembershipRole
 import org.springframework.stereotype.Service
 
 @Service
-class PolicyEvaluator {
+class PolicyEvaluator(
+    private val relationshipResolver: RelationshipResolver,
+) {
     fun evaluate(
         principal: SecurityPrincipal,
         request: PolicyEvaluationRequest,
@@ -74,6 +76,28 @@ class PolicyEvaluator {
             roleBasis = compatibleRoles,
             scopeBasis = compatibleScopes,
             reasonCode = PolicyReasonCode.ALLOWED,
+            relationshipBasis = resolveRelationship(principal, request, rule),
+        )
+    }
+
+    /**
+     * Shadow-mode compartment evaluation: record what relationship (if any)
+     * connects the user to the patient. Never affects the decision in H2.
+     */
+    private fun resolveRelationship(
+        principal: SecurityPrincipal,
+        request: PolicyEvaluationRequest,
+        rule: PolicyRule,
+    ): RelationshipBasis? {
+        if (!rule.requiresRelationship) {
+            return null
+        }
+        val patientId = request.patientId ?: return null
+        val userId = principal.subject.userId ?: return null
+        return relationshipResolver.resolve(
+            organizationId = request.organizationId,
+            userId = userId,
+            patientId = patientId,
         )
     }
 
@@ -108,6 +132,7 @@ class PolicyEvaluator {
         roleBasis: List<MembershipRole>,
         scopeBasis: List<SecurityScope>,
         reasonCode: PolicyReasonCode,
+        relationshipBasis: RelationshipBasis? = null,
     ): PolicyDecision =
         PolicyDecision(
             allowed = allowed,
@@ -118,7 +143,7 @@ class PolicyEvaluator {
             operation = request.operation,
             roleBasis = roleBasis,
             scopeBasis = scopeBasis,
-            relationshipBasis = null,
+            relationshipBasis = relationshipBasis,
             purposeOfUse = null,
             policyVersion = POLICY_VERSION,
             reasonCode = reasonCode,
@@ -129,10 +154,12 @@ class PolicyEvaluator {
         val fhirResource: String,
         // The chart is a whole-compartment composite: only wildcard scopes cover it.
         val requiresWildcardResource: Boolean = false,
+        // Clinical-record rules shadow-resolve the treatment relationship (design decision 3).
+        val requiresRelationship: Boolean = false,
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v15"
+        const val POLICY_VERSION = "policy-spine-v16"
 
         private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
         private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)
@@ -142,10 +169,14 @@ class PolicyEvaluator {
             readRoles: Set<MembershipRole>,
             writeRoles: Set<MembershipRole>,
             fhirResource: String,
+            requiresRelationship: Boolean = false,
         ): Map<PolicyOperation, PolicyRule> = mapOf(
-            PolicyOperation.READ to PolicyRule(readRoles, fhirResource),
-            PolicyOperation.WRITE to PolicyRule(writeRoles, fhirResource),
+            PolicyOperation.READ to PolicyRule(readRoles, fhirResource, requiresRelationship = requiresRelationship),
+            PolicyOperation.WRITE to PolicyRule(writeRoles, fhirResource, requiresRelationship = requiresRelationship),
         )
+
+        private fun clinicalRecord(fhirResource: String): Map<PolicyOperation, PolicyRule> =
+            readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, fhirResource, requiresRelationship = true)
 
         private val rules: Map<PolicyResourceType, Map<PolicyOperation, PolicyRule>> = mapOf(
             PolicyResourceType.ORGANIZATION to mapOf(
@@ -154,19 +185,25 @@ class PolicyEvaluator {
             PolicyResourceType.PATIENT to readWrite(CLINICIAN_AND_STAFF, CLINICIAN_ONLY, "Patient"),
             // Encounters are scheduling-adjacent, so staff retain read access.
             PolicyResourceType.ENCOUNTER to readWrite(CLINICIAN_AND_STAFF, CLINICIAN_ONLY, "Encounter"),
-            // Everything below is clinical-record data: clinician-only.
-            PolicyResourceType.CONDITION to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "Condition"),
-            PolicyResourceType.ALLERGY to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "AllergyIntolerance"),
-            PolicyResourceType.OBSERVATION to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "Observation"),
-            PolicyResourceType.MEDICATION to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "MedicationStatement"),
-            PolicyResourceType.NOTE to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "DocumentReference"),
-            PolicyResourceType.ORDER to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "ServiceRequest"),
-            PolicyResourceType.DIAGNOSTIC_REPORT to readWrite(CLINICIAN_ONLY, CLINICIAN_ONLY, "DiagnosticReport"),
+            // Everything below is clinical-record data: clinician-only, and
+            // compartment-aware (shadow in H2, enforced per-org in H3).
+            PolicyResourceType.CONDITION to clinicalRecord("Condition"),
+            PolicyResourceType.ALLERGY to clinicalRecord("AllergyIntolerance"),
+            PolicyResourceType.OBSERVATION to clinicalRecord("Observation"),
+            PolicyResourceType.MEDICATION to clinicalRecord("MedicationStatement"),
+            PolicyResourceType.NOTE to clinicalRecord("DocumentReference"),
+            PolicyResourceType.ORDER to clinicalRecord("ServiceRequest"),
+            PolicyResourceType.DIAGNOSTIC_REPORT to clinicalRecord("DiagnosticReport"),
             PolicyResourceType.PROVENANCE to mapOf(
-                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "Provenance"),
+                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "Provenance", requiresRelationship = true),
             ),
             PolicyResourceType.CHART to mapOf(
-                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
+                PolicyOperation.READ to PolicyRule(
+                    CLINICIAN_ONLY,
+                    "*",
+                    requiresWildcardResource = true,
+                    requiresRelationship = true,
+                ),
             ),
             // Client management is an organization-settings function: admin-only,
             // and like the chart it needs wildcard scopes (it is not a FHIR resource).

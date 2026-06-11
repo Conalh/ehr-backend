@@ -33,7 +33,7 @@ class MedicationStatementService(
         principal: SecurityPrincipal,
         command: MedicationStatementCreateCommand,
     ): MedicationStatement {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
+        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record medication statements")
@@ -95,8 +95,10 @@ class MedicationStatementService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Medication statement not found")
         }
 
+        // Re-evaluate with the discovered patient so the audit row carries
+        // the shadow relationship basis (H3 enforces here).
         auditEventService.recordResourceAccess(
-            decision = decision,
+            decision = evaluate(principal, PolicyOperation.READ, statement.patientId.value),
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = statement.patientId.value,
@@ -109,7 +111,7 @@ class MedicationStatementService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<MedicationStatement> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read medication statements")
@@ -139,12 +141,14 @@ class MedicationStatementService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.MEDICATION,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

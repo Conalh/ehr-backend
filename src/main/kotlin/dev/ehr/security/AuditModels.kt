@@ -32,6 +32,7 @@ data class AuditEventCommand(
     val outcome: AuditOutcome,
     val policyVersion: String?,
     val policyReasonCode: String?,
+    val relationshipBasis: String? = null,
     val correlationId: String?,
     val metadata: String = "{}",
 )
@@ -49,6 +50,7 @@ data class AuditEventRecord(
     val outcome: AuditOutcome,
     val policyVersion: String?,
     val policyReasonCode: String?,
+    val relationshipBasis: String?,
     val correlationId: String?,
     val metadata: String,
 )
