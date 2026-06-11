@@ -1,7 +1,11 @@
 # Compartment Authorization Design
 
 Date: 2026-06-10
-Status: Draft for review — no code until this is agreed.
+Status: **Accepted 2026-06-10.** Decisions: 1=C (hybrid), 2=B (policy spine),
+3=as proposed, 4=shadow first, 5=break-glass as recommended. Open questions:
+staff encounter reads stay org-wide; encounter-derived memberships auto-end 30
+days after encounter completion (configurable); patient demographics stay
+org-wide in enforced mode.
 
 ## Problem
 
