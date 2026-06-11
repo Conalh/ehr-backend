@@ -37,6 +37,20 @@ enum class PolicyReasonCode {
     INSUFFICIENT_SCOPE,
     UNSUPPORTED_RESOURCE,
     UNSUPPORTED_OPERATION,
+    NO_TREATMENT_RELATIONSHIP,
+}
+
+/** Per-organization rollout posture for compartment authorization. */
+enum class CompartmentEnforcementMode(val dbValue: String) {
+    OFF("off"),
+    SHADOW("shadow"),
+    ENFORCED("enforced"),
+    ;
+
+    companion object {
+        fun fromDb(value: String): CompartmentEnforcementMode =
+            entries.first { it.dbValue == value }
+    }
 }
 
 /** What satisfied the patient-compartment requirement for a decision. */
@@ -66,6 +80,9 @@ data class PolicyDecision(
     val scopeBasis: List<SecurityScope>,
     val relationshipBasis: RelationshipBasis?,
     val purposeOfUse: String?,
+    // Mandatory free-text justification when relationshipBasis is BREAK_GLASS;
+    // recorded in audit metadata, never in logs.
+    val breakGlassReason: String? = null,
     val policyVersion: String,
     val reasonCode: PolicyReasonCode,
 )

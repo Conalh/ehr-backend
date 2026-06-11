@@ -6,6 +6,8 @@ import org.springframework.stereotype.Service
 @Service
 class PolicyEvaluator(
     private val relationshipResolver: RelationshipResolver,
+    private val enforcementModeResolver: EnforcementModeResolver,
+    private val breakGlassAccessor: BreakGlassAccessor,
 ) {
     fun evaluate(
         principal: SecurityPrincipal,
@@ -69,35 +71,81 @@ class PolicyEvaluator(
             )
         }
 
-        return decision(
+        return evaluateCompartment(
             principal = principal,
             request = request,
-            allowed = true,
+            rule = rule,
             roleBasis = compatibleRoles,
             scopeBasis = compatibleScopes,
-            reasonCode = PolicyReasonCode.ALLOWED,
-            relationshipBasis = resolveRelationship(principal, request, rule),
         )
     }
 
     /**
-     * Shadow-mode compartment evaluation: record what relationship (if any)
-     * connects the user to the patient. Never affects the decision in H2.
+     * Compartment evaluation per the organization's rollout posture:
+     * off = skip; shadow = resolve and record, never deny; enforced = deny
+     * relationship-less clinical-record access (break-glass excepted, reads
+     * only — opening an encounter is the write path's relationship grant).
      */
-    private fun resolveRelationship(
+    private fun evaluateCompartment(
         principal: SecurityPrincipal,
         request: PolicyEvaluationRequest,
         rule: PolicyRule,
-    ): RelationshipBasis? {
-        if (!rule.requiresRelationship) {
-            return null
+        roleBasis: List<MembershipRole>,
+        scopeBasis: List<SecurityScope>,
+    ): PolicyDecision {
+        fun allowed(
+            relationshipBasis: RelationshipBasis? = null,
+            purposeOfUse: String? = null,
+            breakGlassReason: String? = null,
+        ): PolicyDecision = decision(
+            principal = principal,
+            request = request,
+            allowed = true,
+            roleBasis = roleBasis,
+            scopeBasis = scopeBasis,
+            reasonCode = PolicyReasonCode.ALLOWED,
+            relationshipBasis = relationshipBasis,
+            purposeOfUse = purposeOfUse,
+            breakGlassReason = breakGlassReason,
+        )
+
+        if (!rule.requiresRelationship || request.patientId == null) {
+            return allowed()
         }
-        val patientId = request.patientId ?: return null
-        val userId = principal.subject.userId ?: return null
-        return relationshipResolver.resolve(
-            organizationId = request.organizationId,
-            userId = userId,
-            patientId = patientId,
+        val mode = enforcementModeResolver.resolve(request.organizationId)
+        if (mode == CompartmentEnforcementMode.OFF) {
+            return allowed()
+        }
+        // Principals without a user identity (system apps) cannot hold a
+        // treatment relationship: they shadow as null and fail closed when
+        // enforced.
+        val relationshipBasis = principal.subject.userId?.let { userId ->
+            relationshipResolver.resolve(
+                organizationId = request.organizationId,
+                userId = userId,
+                patientId = request.patientId,
+            )
+        }
+        if (relationshipBasis != null || mode == CompartmentEnforcementMode.SHADOW) {
+            return allowed(relationshipBasis = relationshipBasis)
+        }
+        if (request.operation == PolicyOperation.READ) {
+            val reason = breakGlassAccessor.currentReason()
+            if (reason != null) {
+                return allowed(
+                    relationshipBasis = RelationshipBasis.BREAK_GLASS,
+                    purposeOfUse = PURPOSE_EMERGENCY_TREATMENT,
+                    breakGlassReason = reason,
+                )
+            }
+        }
+        return decision(
+            principal = principal,
+            request = request,
+            allowed = false,
+            roleBasis = roleBasis,
+            scopeBasis = scopeBasis,
+            reasonCode = PolicyReasonCode.NO_TREATMENT_RELATIONSHIP,
         )
     }
 
@@ -133,6 +181,8 @@ class PolicyEvaluator(
         scopeBasis: List<SecurityScope>,
         reasonCode: PolicyReasonCode,
         relationshipBasis: RelationshipBasis? = null,
+        purposeOfUse: String? = null,
+        breakGlassReason: String? = null,
     ): PolicyDecision =
         PolicyDecision(
             allowed = allowed,
@@ -144,7 +194,8 @@ class PolicyEvaluator(
             roleBasis = roleBasis,
             scopeBasis = scopeBasis,
             relationshipBasis = relationshipBasis,
-            purposeOfUse = null,
+            purposeOfUse = purposeOfUse,
+            breakGlassReason = breakGlassReason,
             policyVersion = POLICY_VERSION,
             reasonCode = reasonCode,
         )
@@ -159,7 +210,10 @@ class PolicyEvaluator(
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v16"
+        const val POLICY_VERSION = "policy-spine-v17"
+
+        // HL7 v3 PurposeOfUse code for emergency treatment (break-glass).
+        const val PURPOSE_EMERGENCY_TREATMENT = "ETREAT"
 
         private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
         private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)

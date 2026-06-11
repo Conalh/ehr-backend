@@ -28,10 +28,11 @@ class AuditEventRepository(
               policy_version,
               policy_reason_code,
               relationship_basis,
+              purpose_of_use,
               correlation_id,
               metadata
             )
-            values (?, ?, null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+            values (?, ?, null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
             returning
               id,
               occurred_at,
@@ -46,6 +47,7 @@ class AuditEventRepository(
               policy_version,
               policy_reason_code,
               relationship_basis,
+              purpose_of_use,
               correlation_id,
               metadata::text as metadata
             """.trimIndent(),
@@ -60,6 +62,7 @@ class AuditEventRepository(
             command.policyVersion,
             command.policyReasonCode,
             command.relationshipBasis,
+            command.purposeOfUse,
             command.correlationId,
             command.metadata,
         )!!
@@ -80,6 +83,7 @@ class AuditEventRepository(
                 policyVersion = rs.getString("policy_version"),
                 policyReasonCode = rs.getString("policy_reason_code"),
                 relationshipBasis = rs.getString("relationship_basis"),
+                purposeOfUse = rs.getString("purpose_of_use"),
                 correlationId = rs.getString("correlation_id"),
                 metadata = rs.getString("metadata"),
             )

@@ -12,12 +12,22 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 class PolicyEvaluatorTest {
-    private val evaluator = PolicyEvaluator { _, _, _ -> null }
+    private val evaluator = evaluator()
 
     /** Fails the test if the evaluator consults the resolver at all. */
     private val untouchableResolver = RelationshipResolver { _, _, _ ->
         throw AssertionError("relationship resolver must not be consulted")
     }
+
+    private fun evaluator(
+        relationshipResolver: RelationshipResolver = RelationshipResolver { _, _, _ -> null },
+        mode: CompartmentEnforcementMode = CompartmentEnforcementMode.SHADOW,
+        breakGlassReason: String? = null,
+    ) = PolicyEvaluator(
+        relationshipResolver = relationshipResolver,
+        enforcementModeResolver = EnforcementModeResolver { mode },
+        breakGlassAccessor = BreakGlassAccessor { breakGlassReason },
+    )
 
     @Test
     fun `allows org admin organization read with compatible user scope`() {
@@ -45,7 +55,7 @@ class PolicyEvaluatorTest {
         assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(null, decision.relationshipBasis)
         assertEquals(null, decision.purposeOfUse)
-        assertEquals("policy-spine-v16", decision.policyVersion)
+        assertEquals("policy-spine-v17", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
     }
 
@@ -461,7 +471,7 @@ class PolicyEvaluatorTest {
             RelationshipBasis.CARE_TEAM_MEMBER
         }
 
-        val decision = PolicyEvaluator(resolver).evaluate(
+        val decision = evaluator(relationshipResolver = resolver).evaluate(
             clinician,
             PolicyEvaluationRequest(
                 resourceType = PolicyResourceType.CONDITION,
@@ -484,7 +494,7 @@ class PolicyEvaluatorTest {
             scopes = "user/*.read",
         )
 
-        val decision = PolicyEvaluator { _, _, _ -> null }.evaluate(
+        val decision = evaluator().evaluate(
             clinician,
             PolicyEvaluationRequest(
                 resourceType = PolicyResourceType.OBSERVATION,
@@ -509,7 +519,7 @@ class PolicyEvaluatorTest {
 
         listOf(PolicyResourceType.PATIENT, PolicyResourceType.ENCOUNTER, PolicyResourceType.CARE_TEAM)
             .forEach { resourceType ->
-                val decision = PolicyEvaluator(untouchableResolver).evaluate(
+                val decision = evaluator(relationshipResolver = untouchableResolver).evaluate(
                     clinician,
                     PolicyEvaluationRequest(
                         resourceType = resourceType,
@@ -533,7 +543,7 @@ class PolicyEvaluatorTest {
             roles = listOf(MembershipRole.CLINICIAN),
             scopes = "user/*.read",
         )
-        val noPatient = PolicyEvaluator(untouchableResolver).evaluate(
+        val noPatient = evaluator(relationshipResolver = untouchableResolver).evaluate(
             clinician,
             PolicyEvaluationRequest(
                 resourceType = PolicyResourceType.CONDITION,
@@ -550,7 +560,7 @@ class PolicyEvaluatorTest {
             roles = listOf(MembershipRole.STAFF),
             scopes = "user/*.read",
         )
-        val denied = PolicyEvaluator(untouchableResolver).evaluate(
+        val denied = evaluator(relationshipResolver = untouchableResolver).evaluate(
             staff,
             PolicyEvaluationRequest(
                 resourceType = PolicyResourceType.CONDITION,
@@ -561,6 +571,150 @@ class PolicyEvaluatorTest {
         )
         assertFalse(denied.allowed)
         assertEquals(null, denied.relationshipBasis)
+    }
+
+    @Test
+    fun `enforced mode denies clinical access without a treatment relationship`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read user/*.write",
+        )
+
+        listOf(PolicyOperation.READ, PolicyOperation.WRITE).forEach { operation ->
+            val decision = evaluator(mode = CompartmentEnforcementMode.ENFORCED).evaluate(
+                clinician,
+                PolicyEvaluationRequest(
+                    resourceType = PolicyResourceType.CONDITION,
+                    operation = operation,
+                    organizationId = organizationId,
+                    patientId = UUID.randomUUID(),
+                ),
+            )
+            assertFalse(decision.allowed, "expected $operation to be denied without a relationship")
+            assertEquals(PolicyReasonCode.NO_TREATMENT_RELATIONSHIP, decision.reasonCode)
+            assertEquals(null, decision.relationshipBasis)
+        }
+    }
+
+    @Test
+    fun `enforced mode allows clinical access with a treatment relationship`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        )
+
+        val decision = evaluator(
+            relationshipResolver = { _, _, _ -> RelationshipBasis.ENCOUNTER_DERIVED },
+            mode = CompartmentEnforcementMode.ENFORCED,
+        ).evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.OBSERVATION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+
+        assertTrue(decision.allowed)
+        assertEquals(RelationshipBasis.ENCOUNTER_DERIVED, decision.relationshipBasis)
+        assertEquals(null, decision.purposeOfUse)
+    }
+
+    @Test
+    fun `break-glass rescues enforced reads but never writes`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read user/*.write",
+        )
+        val breakGlassEvaluator = evaluator(
+            mode = CompartmentEnforcementMode.ENFORCED,
+            breakGlassReason = "unresponsive patient in the ED",
+        )
+
+        val read = breakGlassEvaluator.evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+        assertTrue(read.allowed)
+        assertEquals(RelationshipBasis.BREAK_GLASS, read.relationshipBasis)
+        assertEquals("ETREAT", read.purposeOfUse)
+        assertEquals("unresponsive patient in the ED", read.breakGlassReason)
+
+        val write = breakGlassEvaluator.evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.WRITE,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+        assertFalse(write.allowed)
+        assertEquals(PolicyReasonCode.NO_TREATMENT_RELATIONSHIP, write.reasonCode)
+    }
+
+    @Test
+    fun `off mode skips relationship resolution entirely`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        )
+
+        val decision = evaluator(
+            relationshipResolver = untouchableResolver,
+            mode = CompartmentEnforcementMode.OFF,
+        ).evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+
+        assertTrue(decision.allowed)
+        assertEquals(null, decision.relationshipBasis)
+    }
+
+    @Test
+    fun `principals without a user identity fail closed in enforced mode`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val systemPrincipal = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "user/*.read",
+        ).let { it.copy(subject = it.subject.copy(userId = null)) }
+
+        val decision = evaluator(
+            relationshipResolver = untouchableResolver,
+            mode = CompartmentEnforcementMode.ENFORCED,
+        ).evaluate(
+            systemPrincipal,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+
+        assertFalse(decision.allowed)
+        assertEquals(PolicyReasonCode.NO_TREATMENT_RELATIONSHIP, decision.reasonCode)
     }
 
     private fun encounterRequest(

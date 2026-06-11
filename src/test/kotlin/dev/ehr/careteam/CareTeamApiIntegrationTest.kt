@@ -89,7 +89,7 @@ class CareTeamApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("CARE_TEAM", addAudit.resourceType)
         assertEquals("CREATE", addAudit.operation)
         assertEquals(patient.id.value.toString(), addAudit.patientId)
-        assertEquals("policy-spine-v16", addAudit.policyVersion)
+        assertEquals("policy-spine-v17", addAudit.policyVersion)
 
         // duplicate active membership -> 409
         mockMvc.post("/api/v1/patients/${patient.id.value}/care-team") {

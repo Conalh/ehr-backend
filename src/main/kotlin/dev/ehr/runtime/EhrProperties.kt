@@ -20,6 +20,8 @@ data class EhrProperties(
     val export: Export = Export(),
     @field:Valid
     val rateLimit: RateLimit = RateLimit(),
+    @field:Valid
+    val compartment: Compartment = Compartment(),
 ) {
     data class Security(
         @field:NotBlank
@@ -35,5 +37,13 @@ data class EhrProperties(
     data class RateLimit(
         @field:Min(1)
         val requestsPerMinute: Int = 1000,
+    )
+
+    data class Compartment(
+        // Encounter-derived care-team memberships auto-end this many days
+        // after the sustaining encounter completes (design decision: 30,
+        // configurable).
+        @field:Min(1)
+        val encounterDerivedExpiryDays: Int = 30,
     )
 }

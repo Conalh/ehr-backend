@@ -1,5 +1,6 @@
 package dev.ehr.security
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.UserId
 import dev.ehr.runtime.CorrelationIdFilter
@@ -11,6 +12,7 @@ import java.util.UUID
 @Service
 class AuditEventService(
     private val auditEventRepository: AuditEventRepository,
+    private val objectMapper: ObjectMapper,
 ) {
     @Transactional
     fun recordPolicyDecision(decision: PolicyDecision): AuditEventRecord =
@@ -24,7 +26,9 @@ class AuditEventService(
                 policyVersion = decision.policyVersion,
                 policyReasonCode = decision.reasonCode.name,
                 relationshipBasis = decision.relationshipBasis?.dbValue,
+                purposeOfUse = decision.purposeOfUse,
                 correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
+                metadata = decisionMetadata(decision),
             ),
         )
 
@@ -48,9 +52,16 @@ class AuditEventService(
                 policyVersion = decision.policyVersion,
                 policyReasonCode = decision.reasonCode.name,
                 relationshipBasis = decision.relationshipBasis?.dbValue,
+                purposeOfUse = decision.purposeOfUse,
                 correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
+                metadata = decisionMetadata(decision),
             ),
         )
+
+    private fun decisionMetadata(decision: PolicyDecision): String {
+        val reason = decision.breakGlassReason ?: return "{}"
+        return objectMapper.writeValueAsString(mapOf("breakGlassReason" to reason))
+    }
 
     /**
      * For background workers (e.g. the export processor) acting on behalf of a

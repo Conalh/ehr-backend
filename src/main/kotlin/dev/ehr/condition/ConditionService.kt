@@ -7,6 +7,7 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -94,6 +95,14 @@ class ConditionService(
             return transactionTemplate.execute {
                 val prior = conditionRepository.findById(scope, conditionId)
                     ?: throw ConditionNotFoundForUpdate()
+                // Re-evaluate with the discovered patient: in enforced
+                // organizations a missing treatment relationship denies here,
+                // before the mutation. Thrown past the transaction so the
+                // denial audit row survives the rollback.
+                val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value)
+                if (!compartmentDecision.allowed) {
+                    throw CompartmentDeniedException(compartmentDecision, prior.patientId.value, conditionId.value)
+                }
                 val newClinicalStatus = clinicalStatus ?: prior.clinicalStatus
                 val newVerificationStatus = verificationStatus ?: prior.verificationStatus
                 val newOnsetDate = onsetDate ?: prior.onsetDate
@@ -114,9 +123,6 @@ class ConditionService(
                     expectedVersion = expectedVersion,
                     updatedBy = principal.subject.userId,
                 )
-                // Re-evaluate with the discovered patient so the audit row
-                // carries the shadow relationship basis (H3 enforces here).
-                val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value)
                 val voided = newVerificationStatus == ConditionVerificationStatus.ENTERED_IN_ERROR &&
                     prior.verificationStatus != ConditionVerificationStatus.ENTERED_IN_ERROR
                 provenanceRecorder.recordUpdated(
@@ -138,6 +144,13 @@ class ConditionService(
                 )
                 updated
             }!!
+        } catch (exception: CompartmentDeniedException) {
+            auditEventService.recordDeniedAccess(
+                exception.decision,
+                patientId = exception.patientId,
+                resourceId = exception.resourceId,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to update conditions")
         } catch (exception: ConditionNotFoundForUpdate) {
             recordFailedUpdate(decision, conditionId.value)
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Condition not found")
@@ -182,10 +195,19 @@ class ConditionService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Condition not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.READ, condition.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = condition.patientId.value,
+                resourceId = condition.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read conditions")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, PolicyOperation.READ, condition.patientId.value),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = condition.patientId.value,

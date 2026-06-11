@@ -80,9 +80,17 @@ class DiagnosticReportService(
                 )
             }
         }
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
         val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, order.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = order.patientId.value,
+                resourceId = orderId.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to attach results")
+        }
 
         try {
             return transactionTemplate.execute {
@@ -158,10 +166,19 @@ class DiagnosticReportService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Diagnostic report not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.READ, report.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = report.patientId.value,
+                resourceId = report.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read diagnostic reports")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, PolicyOperation.READ, report.patientId.value),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = report.patientId.value,

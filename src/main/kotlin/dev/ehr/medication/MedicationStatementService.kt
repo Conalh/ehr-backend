@@ -95,10 +95,19 @@ class MedicationStatementService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Medication statement not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.READ, statement.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = statement.patientId.value,
+                resourceId = statement.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read medication statements")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, PolicyOperation.READ, statement.patientId.value),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = statement.patientId.value,

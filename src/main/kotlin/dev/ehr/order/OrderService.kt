@@ -9,6 +9,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
+import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.PolicyEvaluationRequest
 import dev.ehr.security.PolicyEvaluator
@@ -93,10 +94,19 @@ class OrderService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.READ, order.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = order.patientId.value,
+                resourceId = order.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read orders")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, PolicyOperation.READ, order.patientId.value),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = order.patientId.value,
@@ -152,6 +162,14 @@ class OrderService(
             return transactionTemplate.execute {
                 val prior = orderRepository.findById(scope, orderId)
                     ?: throw OrderNotFoundForTransition()
+                // Re-evaluate with the discovered patient: in enforced
+                // organizations a missing treatment relationship denies here,
+                // before the mutation. Thrown past the transaction so the
+                // denial audit row survives the rollback.
+                val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value)
+                if (!compartmentDecision.allowed) {
+                    throw CompartmentDeniedException(compartmentDecision, prior.patientId.value, orderId.value)
+                }
                 val order = orderRepository.transition(scope, orderId, command)
                     ?: throw OrderNotFoundForTransition()
                 provenanceRecorder.recordUpdated(
@@ -168,10 +186,8 @@ class OrderService(
                         ProvenanceActivity.UPDATED
                     },
                 )
-                // Re-evaluate with the discovered patient so the audit row
-                // carries the shadow relationship basis (H3 enforces here).
                 auditEventService.recordResourceAccess(
-                    decision = evaluate(principal, PolicyOperation.WRITE, order.patientId.value),
+                    decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = order.patientId.value,
@@ -179,6 +195,13 @@ class OrderService(
                 )
                 order
             }!!
+        } catch (exception: CompartmentDeniedException) {
+            auditEventService.recordDeniedAccess(
+                exception.decision,
+                patientId = exception.patientId,
+                resourceId = exception.resourceId,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to update orders")
         } catch (exception: OrderNotFoundForTransition) {
             recordFailedTransition(decision, orderId.value)
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found")

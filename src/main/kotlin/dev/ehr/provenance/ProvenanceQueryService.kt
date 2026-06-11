@@ -44,10 +44,19 @@ class ProvenanceQueryService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Provenance not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, event.patientId)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = event.patientId,
+                resourceId = event.id,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, event.patientId),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = event.patientId,
@@ -68,11 +77,20 @@ class ProvenanceQueryService(
         }
 
         val events = provenanceRepository.findByTarget(tenantScope(principal), targetResourceType, targetResourceId)
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
         val patientId = events.firstOrNull()?.patientId
+        val compartmentDecision = if (patientId != null) evaluate(principal, patientId) else decision
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = patientId,
+                resourceId = targetResourceId,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
+        }
         auditEventService.recordResourceAccess(
-            decision = if (patientId != null) evaluate(principal, patientId) else decision,
+            decision = compartmentDecision,
             operation = AuditOperation.SEARCH,
             outcome = AuditOutcome.SUCCESS,
             patientId = patientId,

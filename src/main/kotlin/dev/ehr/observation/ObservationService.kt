@@ -7,6 +7,7 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -88,6 +89,14 @@ class ObservationService(
             return transactionTemplate.execute {
                 val prior = observationRepository.findById(scope, observationId)
                     ?: throw ObservationNotFoundForUpdate()
+                // Re-evaluate with the discovered patient: in enforced
+                // organizations a missing treatment relationship denies here,
+                // before the mutation. Thrown past the transaction so the
+                // denial audit row survives the rollback.
+                val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value)
+                if (!compartmentDecision.allowed) {
+                    throw CompartmentDeniedException(compartmentDecision, prior.patientId.value, observationId.value)
+                }
                 val updated = observationRepository.amend(
                     tenantScope = scope,
                     observationId = observationId,
@@ -105,10 +114,8 @@ class ObservationService(
                     priorState = prior,
                     activity = ProvenanceActivity.AMENDED,
                 )
-                // Re-evaluate with the discovered patient so the audit row
-                // carries the shadow relationship basis (H3 enforces here).
                 auditEventService.recordResourceAccess(
-                    decision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value),
+                    decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
@@ -116,6 +123,13 @@ class ObservationService(
                 )
                 updated
             }!!
+        } catch (exception: CompartmentDeniedException) {
+            auditEventService.recordDeniedAccess(
+                exception.decision,
+                patientId = exception.patientId,
+                resourceId = exception.resourceId,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to amend observations")
         } catch (exception: ObservationNotFoundForUpdate) {
             recordFailedUpdate(decision, observationId.value)
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Observation not found")
@@ -162,10 +176,19 @@ class ObservationService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Observation not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.READ, observation.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = observation.patientId.value,
+                resourceId = observation.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read observations")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, PolicyOperation.READ, observation.patientId.value),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = observation.patientId.value,

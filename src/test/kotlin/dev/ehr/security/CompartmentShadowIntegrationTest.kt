@@ -99,7 +99,7 @@ class CompartmentShadowIntegrationTest : PostgresIntegrationTest() {
         val listAudit = auditRow(listCorrelationId)
         assertEquals("SUCCESS", listAudit.outcome)
         assertEquals("encounter-derived", listAudit.relationshipBasis)
-        assertEquals("policy-spine-v16", listAudit.policyVersion)
+        assertEquals("policy-spine-v17", listAudit.policyVersion)
 
         // Get-by-id: the patient is only discovered after the fetch.
         val response = mockMvc.post("/api/v1/patients/${patient.id.value}/conditions") {

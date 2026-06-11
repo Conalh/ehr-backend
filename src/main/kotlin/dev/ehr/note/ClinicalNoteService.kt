@@ -8,6 +8,7 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
@@ -52,9 +53,17 @@ class ClinicalNoteService(
         val scope = tenantScope(principal)
         val encounter = encounterRepository.findById(scope, encounterId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
         val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, encounter.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = encounter.patientId.value,
+                resourceId = encounter.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to write clinical notes")
+        }
 
         try {
             return transactionTemplate.execute {
@@ -113,6 +122,14 @@ class ClinicalNoteService(
             return transactionTemplate.execute {
                 val prior = clinicalNoteRepository.findById(scope, noteId)
                     ?: throw NoteNotFoundForUpdate()
+                // Re-evaluate with the discovered patient: in enforced
+                // organizations a missing treatment relationship denies here,
+                // before the mutation. Thrown past the transaction so the
+                // denial audit row survives the rollback.
+                val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value)
+                if (!compartmentDecision.allowed) {
+                    throw CompartmentDeniedException(compartmentDecision, prior.patientId.value, noteId.value)
+                }
                 val updated = clinicalNoteRepository.amend(
                     tenantScope = scope,
                     noteId = noteId,
@@ -131,10 +148,8 @@ class ClinicalNoteService(
                     priorState = prior,
                     activity = ProvenanceActivity.AMENDED,
                 )
-                // Re-evaluate with the discovered patient so the audit row
-                // carries the shadow relationship basis (H3 enforces here).
                 auditEventService.recordResourceAccess(
-                    decision = evaluate(principal, PolicyOperation.WRITE, prior.patientId.value),
+                    decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
                     outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
@@ -142,6 +157,13 @@ class ClinicalNoteService(
                 )
                 updated
             }!!
+        } catch (exception: CompartmentDeniedException) {
+            auditEventService.recordDeniedAccess(
+                exception.decision,
+                patientId = exception.patientId,
+                resourceId = exception.resourceId,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to amend clinical notes")
         } catch (exception: NoteNotFoundForUpdate) {
             recordFailedUpdate(decision, noteId.value)
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Note not found")
@@ -186,10 +208,19 @@ class ClinicalNoteService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Note not found")
         }
 
-        // Re-evaluate with the discovered patient so the audit row carries
-        // the shadow relationship basis (H3 enforces here).
+        // Re-evaluate with the discovered patient: in enforced organizations
+        // a missing treatment relationship denies here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.READ, note.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = note.patientId.value,
+                resourceId = note.id.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read clinical notes")
+        }
         auditEventService.recordResourceAccess(
-            decision = evaluate(principal, PolicyOperation.READ, note.patientId.value),
+            decision = compartmentDecision,
             operation = AuditOperation.READ,
             outcome = AuditOutcome.SUCCESS,
             patientId = note.patientId.value,
