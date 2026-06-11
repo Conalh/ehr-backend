@@ -10,6 +10,7 @@ import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.launchBoundPatientId
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -73,7 +74,7 @@ class PatientService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): PatientWithIdentifiers {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, resourceId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read patients")
@@ -115,7 +116,11 @@ class PatientService(
         }
 
         val tenantScope = tenantScope(principal)
+        // A launch-bound principal only ever sees the launched patient,
+        // even through identifier search.
+        val launchBound = principal.launchBoundPatientId()
         val patient = patientRepository.findByIdentifier(tenantScope, system, value)
+            ?.takeIf { launchBound == null || it.id.value == launchBound }
         auditEventService.recordResourceAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
@@ -131,12 +136,14 @@ class PatientService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.PATIENT,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

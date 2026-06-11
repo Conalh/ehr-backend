@@ -42,15 +42,18 @@ class SmartConfigurationIntegrationTest : PostgresIntegrationTest() {
                             "client-confidential-symmetric",
                             "client-public",
                             "sso-openid-connect",
+                            "launch-standalone",
+                            "context-standalone-patient",
                             "permission-user",
+                            "permission-patient",
                             "permission-v1",
                             "permission-v2",
                         ),
                     )
                 }
-                // no unsupported launch capabilities are advertised
+                // EHR launch stays unadvertised until something can launch.
                 jsonPath("$.capabilities") {
-                    value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItems("launch-ehr", "launch-standalone")))
+                    value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItems("launch-ehr")))
                 }
             }
     }

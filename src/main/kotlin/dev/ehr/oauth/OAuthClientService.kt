@@ -41,7 +41,8 @@ class OAuthClientService(
     private val secureRandom = SecureRandom()
 
     private companion object {
-        val OIDC_SCOPES = setOf("openid", "fhirUser")
+        // Non-clinical scopes a client may hold besides SMART resource scopes.
+        val OIDC_SCOPES = setOf("openid", "fhirUser", "launch/patient")
     }
 
     fun register(

@@ -82,6 +82,36 @@ class PatientRepository(
             patientId.value,
         ).singleOrNull()
 
+    /** Most recent patients for the synthetic launch picker. */
+    fun findRecentByOrganization(
+        tenantScope: TenantScope,
+        limit: Int = 50,
+    ): List<Patient> =
+        jdbcTemplate.query(
+            """
+            select
+              id,
+              organization_id,
+              status,
+              given_name,
+              family_name,
+              birth_date,
+              administrative_gender,
+              version,
+              created_at,
+              updated_at,
+              created_by,
+              updated_by
+            from patients
+            where organization_id = ?
+            order by created_at desc, id
+            limit ?
+            """.trimIndent(),
+            patientRowMapper,
+            tenantScope.organizationId.value,
+            limit,
+        )
+
     fun findByIdentifier(
         tenantScope: TenantScope,
         system: String,

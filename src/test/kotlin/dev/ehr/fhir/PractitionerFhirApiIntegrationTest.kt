@@ -83,7 +83,7 @@ class PractitionerFhirApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("PRACTITIONER", audit.resourceType)
         assertEquals("READ", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
-        assertEquals("policy-spine-v19", audit.policyVersion)
+        assertEquals("policy-spine-v20", audit.policyVersion)
 
         // Staff retain read access (directory data).
         val staff = createMemberInOrganization(member.organization, MembershipRole.STAFF, "user/*.read")

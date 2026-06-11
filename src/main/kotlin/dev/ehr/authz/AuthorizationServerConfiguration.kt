@@ -64,7 +64,18 @@ class AuthorizationServerConfiguration {
         http
             .securityMatcher(authorizationServerConfigurer.endpointsMatcher)
             .csrf { it.ignoringRequestMatchers(authorizationServerConfigurer.endpointsMatcher) }
-            .with(authorizationServerConfigurer) { it.oidc(Customizer.withDefaults()) }
+            .with(authorizationServerConfigurer) {
+                it.oidc(Customizer.withDefaults())
+                it.tokenEndpoint { tokenEndpoint ->
+                    tokenEndpoint.accessTokenResponseHandler(launchAwareTokenResponseHandler())
+                }
+            }
+            // Interpose the patient picker before the authorize endpoint
+            // processes a launch/patient request.
+            .addFilterBefore(
+                PatientLaunchFilter(),
+                org.springframework.security.web.authentication.preauth.AbstractPreAuthenticatedProcessingFilter::class.java,
+            )
             .authorizeHttpRequests { it.anyRequest().authenticated() }
             // Browser-shaped requests to /oauth/authorize go through the dev
             // login; everything programmatic keeps its OAuth error responses
@@ -84,8 +95,11 @@ class AuthorizationServerConfiguration {
     @Order(1)
     fun devLoginSecurityFilterChain(http: HttpSecurity): SecurityFilterChain =
         http
-            .securityMatcher("/login", "/logout")
-            .authorizeHttpRequests { it.anyRequest().permitAll() }
+            .securityMatcher("/login", "/logout", "/launch/**")
+            .authorizeHttpRequests {
+                it.requestMatchers("/launch/**").authenticated()
+                it.anyRequest().permitAll()
+            }
             .formLogin(Customizer.withDefaults())
             .build()
 
@@ -122,6 +136,49 @@ class AuthorizationServerConfiguration {
             .tokenRevocationEndpoint("/oauth/revoke")
             .jwkSetEndpoint("/oauth/jwks")
             .build()
+
+    @Bean
+    fun authorizationService(): org.springframework.security.oauth2.server.authorization.OAuth2AuthorizationService =
+        LaunchContextAuthorizationService(
+            org.springframework.security.oauth2.server.authorization.InMemoryOAuth2AuthorizationService(),
+        )
+
+    /**
+     * SMART launch context: the token response carries the launched patient
+     * as the `patient` parameter, read back from our own access token claim.
+     */
+    private fun launchAwareTokenResponseHandler(): org.springframework.security.web.authentication.AuthenticationSuccessHandler {
+        val converter = org.springframework.security.oauth2.core.http.converter.OAuth2AccessTokenResponseHttpMessageConverter()
+        return org.springframework.security.web.authentication.AuthenticationSuccessHandler { _, response, authentication ->
+            val tokenAuthentication =
+                authentication as org.springframework.security.oauth2.server.authorization.authentication.OAuth2AccessTokenAuthenticationToken
+            val accessToken = tokenAuthentication.accessToken
+            val additionalParameters = tokenAuthentication.additionalParameters.toMutableMap()
+            runCatching {
+                com.nimbusds.jwt.JWTParser.parse(accessToken.tokenValue)
+                    .jwtClaimsSet.getStringClaim(JwtClaimNames.LAUNCH_PATIENT)
+            }.getOrNull()?.let { additionalParameters["patient"] = it }
+
+            val builder = org.springframework.security.oauth2.core.endpoint.OAuth2AccessTokenResponse
+                .withToken(accessToken.tokenValue)
+                .tokenType(accessToken.tokenType)
+                .scopes(accessToken.scopes)
+            val issuedAt = accessToken.issuedAt
+            val expiresAt = accessToken.expiresAt
+            if (issuedAt != null && expiresAt != null) {
+                builder.expiresIn(java.time.temporal.ChronoUnit.SECONDS.between(issuedAt, expiresAt))
+            }
+            tokenAuthentication.refreshToken?.let { builder.refreshToken(it.tokenValue) }
+            if (additionalParameters.isNotEmpty()) {
+                builder.additionalParameters(additionalParameters)
+            }
+            converter.write(
+                builder.build(),
+                null,
+                org.springframework.http.server.ServletServerHttpResponse(response),
+            )
+        }
+    }
 
     @Bean
     fun jwkSource(): JWKSource<SecurityContext> {
@@ -217,6 +274,11 @@ class AuthorizationServerConfiguration {
                         membership.organizationId.value.toString(),
                     )
                     context.claims.claim(JwtClaimNames.SCOPE, context.authorizedScopes.joinToString(" "))
+                    // SMART launch context rides in the authorization (stamped
+                    // at code issuance) and binds the token to one patient.
+                    context.authorization
+                        ?.getAttribute<UUID>(LaunchContextAuthorizationService.LAUNCH_PATIENT_ATTRIBUTE)
+                        ?.let { context.claims.claim(JwtClaimNames.LAUNCH_PATIENT, it.toString()) }
                 }
             }
         }

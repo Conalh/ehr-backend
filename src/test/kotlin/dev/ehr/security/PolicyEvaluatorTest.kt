@@ -55,7 +55,7 @@ class PolicyEvaluatorTest {
         assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(null, decision.relationshipBasis)
         assertEquals(null, decision.purposeOfUse)
-        assertEquals("policy-spine-v19", decision.policyVersion)
+        assertEquals("policy-spine-v20", decision.policyVersion)
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
     }
 
@@ -748,6 +748,7 @@ class PolicyEvaluatorTest {
         organizationId: OrganizationId,
         roles: List<MembershipRole>,
         scopes: String,
+        launchPatientId: UUID? = null,
     ): SecurityPrincipal =
         SecurityPrincipal(
             subject = AuthenticatedSubject(
@@ -755,6 +756,7 @@ class PolicyEvaluatorTest {
                 userId = UserId(UUID.randomUUID()),
                 clientId = OAuthClientId(UUID.randomUUID()),
                 scopes = SecurityScope.parse(scopes),
+                launchPatientId = launchPatientId,
             ),
             organization = OrganizationContext(organizationId),
             membership = MembershipContext(
@@ -762,4 +764,61 @@ class PolicyEvaluatorTest {
                 roles = roles,
             ),
         )
+
+    @Test
+    fun `launch context unlocks patient scopes for exactly the launched patient`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val launchedPatient = UUID.randomUUID()
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "patient/*.read",
+            launchPatientId = launchedPatient,
+        )
+
+        val matching = evaluator(relationshipResolver = { _, _, _ -> RelationshipBasis.ENCOUNTER_DERIVED }).evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = launchedPatient,
+            ),
+        )
+        assertTrue(matching.allowed)
+
+        val mismatched = evaluator().evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+        assertFalse(mismatched.allowed)
+        assertEquals(PolicyReasonCode.OUTSIDE_PATIENT_CONTEXT, mismatched.reasonCode)
+    }
+
+    @Test
+    fun `mixed tokens keep org-wide access through their user scopes`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val clinician = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.CLINICIAN),
+            scopes = "patient/*.read user/*.read",
+            launchPatientId = UUID.randomUUID(),
+        )
+
+        val decision = evaluator().evaluate(
+            clinician,
+            PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.CONDITION,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+                patientId = UUID.randomUUID(),
+            ),
+        )
+        assertTrue(decision.allowed)
+    }
 }

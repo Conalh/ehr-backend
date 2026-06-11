@@ -46,7 +46,7 @@ class PolicyEvaluator(
 
         val compatibleRoles = principal.membership.roles.filter { it in rule.roles }
         val compatibleScopes = principal.subject.scopes.filter { scope ->
-            scopeAuthorizes(scope, rule, request.operation)
+            scopeAuthorizes(principal, scope, rule, request.operation)
         }
 
         if (compatibleRoles.isEmpty()) {
@@ -68,6 +68,26 @@ class PolicyEvaluator(
                 roleBasis = compatibleRoles,
                 scopeBasis = emptyList(),
                 reasonCode = PolicyReasonCode.INSUFFICIENT_SCOPE,
+            )
+        }
+
+        // SMART launch binding: when the only authorizing scopes are
+        // patient-context, the token is hard-bound to the launched patient.
+        // A request with an unknown patient passes here because every
+        // fetch-first path re-evaluates with the discovered patient (H3).
+        val launchPatientId = principal.subject.launchPatientId
+        if (launchPatientId != null &&
+            request.patientId != null &&
+            request.patientId != launchPatientId &&
+            compatibleScopes.all { SmartScope.parse(it.rawValue)?.context == SmartContext.PATIENT }
+        ) {
+            return decision(
+                principal = principal,
+                request = request,
+                allowed = false,
+                roleBasis = compatibleRoles,
+                scopeBasis = compatibleScopes,
+                reasonCode = PolicyReasonCode.OUTSIDE_PATIENT_CONTEXT,
             )
         }
 
@@ -150,13 +170,15 @@ class PolicyEvaluator(
     }
 
     private fun scopeAuthorizes(
+        principal: SecurityPrincipal,
         scope: SecurityScope,
         rule: PolicyRule,
         operation: PolicyOperation,
     ): Boolean {
         val smartScope = SmartScope.parse(scope.rawValue) ?: return false
-        // Patient-context scopes need launch context, which does not exist yet: fail closed.
-        if (smartScope.context == SmartContext.PATIENT) {
+        // Patient-context scopes authorize only inside a patient launch;
+        // without launch context they fail closed.
+        if (smartScope.context == SmartContext.PATIENT && principal.subject.launchPatientId == null) {
             return false
         }
         val resourceCovered = if (rule.requiresWildcardResource) {
@@ -210,7 +232,7 @@ class PolicyEvaluator(
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v19"
+        const val POLICY_VERSION = "policy-spine-v20"
 
         // HL7 v3 PurposeOfUse code for emergency treatment (break-glass).
         const val PURPOSE_EMERGENCY_TREATMENT = "ETREAT"

@@ -34,7 +34,7 @@ class CareTeamService(
         userId: UserId,
         role: CareTeamRole,
     ): CareTeamMembership {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
+        val decision = evaluate(principal, PolicyOperation.WRITE, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to manage care teams")
@@ -73,7 +73,7 @@ class CareTeamService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<CareTeamMembership> {
-        val decision = evaluate(principal, PolicyOperation.READ)
+        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read care teams")
@@ -122,11 +122,23 @@ class CareTeamService(
                 throw ResponseStatusException(HttpStatus.NOT_FOUND, "Membership not found")
             }
 
+        // Re-evaluate with the discovered patient: launch-bound tokens are
+        // denied outside their patient context here.
+        val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, existing.patientId.value)
+        if (!compartmentDecision.allowed) {
+            auditEventService.recordDeniedAccess(
+                compartmentDecision,
+                patientId = existing.patientId.value,
+                resourceId = membershipId.value,
+            )
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to manage care teams")
+        }
+
         return transactionTemplate.execute {
             val ended = careTeamRepository.end(scope, membershipId)
                 ?: throw ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Membership is already ended")
             auditEventService.recordResourceAccess(
-                decision = decision,
+                decision = compartmentDecision,
                 operation = AuditOperation.UPDATE,
                 outcome = AuditOutcome.SUCCESS,
                 patientId = existing.patientId.value,
@@ -139,12 +151,14 @@ class CareTeamService(
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
     ) = policyEvaluator.evaluate(
         principal = principal,
         request = PolicyEvaluationRequest(
             resourceType = PolicyResourceType.CARE_TEAM,
             operation = operation,
             organizationId = principal.organization.organizationId,
+            patientId = patientId,
         ),
     )
 

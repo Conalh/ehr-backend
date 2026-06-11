@@ -57,6 +57,8 @@ class JwtPrincipalAuthenticationConverter(
                 userId = user.id,
                 clientId = parseOptionalClientId(jwt),
                 scopes = scopes,
+                launchPatientId = jwt.getClaimAsString(JwtClaimNames.LAUNCH_PATIENT)
+                    ?.let { parseUuid(it, "JWT launch patient is not a UUID") },
             ),
             organization = OrganizationContext(
                 organizationId = organization.id,

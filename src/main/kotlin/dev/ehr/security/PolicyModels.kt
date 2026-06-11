@@ -39,6 +39,7 @@ enum class PolicyReasonCode {
     UNSUPPORTED_RESOURCE,
     UNSUPPORTED_OPERATION,
     NO_TREATMENT_RELATIONSHIP,
+    OUTSIDE_PATIENT_CONTEXT,
 }
 
 /** Per-organization rollout posture for compartment authorization. */
