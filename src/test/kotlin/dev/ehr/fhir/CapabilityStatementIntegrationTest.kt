@@ -41,8 +41,8 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                 jsonPath("$.rest[0].security.extension[0].extension[*].valueUri") {
                     value(org.hamcrest.Matchers.hasItem(endsWith("/oauth/token")))
                 }
-                // exactly the nine served resources, nothing more
-                jsonPath("$.rest[0].resource.length()") { value(9) }
+                // exactly the ten served resources, nothing more
+                jsonPath("$.rest[0].resource.length()") { value(10) }
                 jsonPath("$.rest[0].resource[*].type") {
                     value(
                         containsInAnyOrder(
@@ -55,6 +55,7 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                             "DocumentReference",
                             "DiagnosticReport",
                             "Provenance",
+                            "CareTeam",
                         ),
                     )
                 }

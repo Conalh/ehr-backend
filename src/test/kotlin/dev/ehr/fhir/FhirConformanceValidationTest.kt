@@ -234,8 +234,35 @@ class FhirConformanceValidationTest {
             syntheticGenerationRunId = null,
         )
 
+        val careTeamUser = dev.ehr.identity.User(
+            id = UserId(UUID.randomUUID()),
+            externalSubject = "conformance-user",
+            email = "conformance-user@example.test",
+            displayName = "Conformance Clinician",
+            status = dev.ehr.identity.UserStatus.ACTIVE,
+            createdAt = now,
+            updatedAt = now,
+        )
+        val careTeamMembership = dev.ehr.careteam.CareTeamMembership(
+            id = dev.ehr.careteam.CareTeamMembershipId(UUID.randomUUID()),
+            organizationId = organizationId,
+            patientId = patientId,
+            userId = careTeamUser.id,
+            role = dev.ehr.careteam.CareTeamRole.ATTENDING,
+            origin = dev.ehr.careteam.CareTeamMembershipOrigin.EXPLICIT,
+            periodStart = now,
+            periodEnd = null,
+            createdAt = now,
+            createdBy = careTeamUser.id,
+        )
+
         val resources: Map<String, IBaseResource> = mapOf(
             "Patient" to PatientFhirMapper().toFhirPatient(PatientWithIdentifiers(patient, listOf(identifier))),
+            "CareTeam" to CareTeamFhirMapper().toFhirCareTeam(
+                patientId,
+                listOf(careTeamMembership),
+                mapOf(careTeamUser.id to careTeamUser),
+            ),
             "Encounter" to EncounterFhirMapper().toFhirEncounter(encounter, actCode),
             "Condition" to ConditionFhirMapper().toFhirCondition(condition, snomed),
             "AllergyIntolerance" to AllergyFhirMapper().toFhirAllergyIntolerance(allergy, snomed),

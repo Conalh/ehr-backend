@@ -56,6 +56,7 @@ object FhirCapabilityRegistry {
         SupportedResource("MedicationStatement", listOf(patientParam)),
         SupportedResource("DocumentReference", listOf(patientParam)),
         SupportedResource("DiagnosticReport", listOf(patientParam)),
+        SupportedResource("CareTeam", listOf(patientParam)),
         SupportedResource(
             type = "Provenance",
             searchParams = listOf(
