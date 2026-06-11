@@ -258,6 +258,17 @@ class FhirConformanceValidationTest {
 
         val resources: Map<String, IBaseResource> = mapOf(
             "Patient" to PatientFhirMapper().toFhirPatient(PatientWithIdentifiers(patient, listOf(identifier))),
+            "Practitioner" to PractitionerFhirMapper().toFhirPractitioner(
+                dev.ehr.identity.Practitioner(
+                    id = dev.ehr.identity.PractitionerId(UUID.randomUUID()),
+                    userId = careTeamUser.id,
+                    npi = "1234567893",
+                    displayName = "Conformance Clinician",
+                    status = dev.ehr.identity.PractitionerStatus.ACTIVE,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            ),
             "CareTeam" to CareTeamFhirMapper().toFhirCareTeam(
                 patientId,
                 listOf(careTeamMembership),

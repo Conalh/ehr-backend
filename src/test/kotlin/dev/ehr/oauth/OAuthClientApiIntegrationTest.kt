@@ -81,7 +81,7 @@ class OAuthClientApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("OAUTH_CLIENT", registerAudit.resourceType)
         assertEquals("CREATE", registerAudit.operation)
         assertEquals("SUCCESS", registerAudit.outcome)
-        assertEquals("policy-spine-v18", registerAudit.policyVersion)
+        assertEquals("policy-spine-v19", registerAudit.policyVersion)
 
         mockMvc.get("/api/v1/oauth-clients") {
             header("Authorization", "Bearer ${admin.token}")

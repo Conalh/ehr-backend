@@ -22,6 +22,7 @@ enum class PolicyResourceType {
     OAUTH_CLIENT,
     EXPORT,
     CARE_TEAM,
+    PRACTITIONER,
     SYSTEM,
 }
 

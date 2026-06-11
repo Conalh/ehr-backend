@@ -29,6 +29,7 @@ class SmartConfigurationController {
             capabilities = listOf(
                 "client-confidential-symmetric",
                 "client-public",
+                "sso-openid-connect",
                 "permission-user",
                 "permission-v1",
                 "permission-v2",

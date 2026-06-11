@@ -40,6 +40,28 @@ class PractitionerRepository(
             id.value,
         ).singleOrNull()
 
+    /**
+     * Tenant-honest lookup: a practitioner is visible to an organization only
+     * when its user holds an active membership there.
+     */
+    fun findByIdInOrganization(
+        tenantScope: TenantScope,
+        id: PractitionerId,
+    ): Practitioner? =
+        jdbcTemplate.query(
+            """
+            select p.id, p.user_id, p.npi, p.display_name, p.status, p.created_at, p.updated_at
+            from practitioners p
+            join memberships m on m.user_id = p.user_id
+            where p.id = ?
+              and m.organization_id = ?
+              and m.status = 'active'
+            """.trimIndent(),
+            rowMapper,
+            id.value,
+            tenantScope.organizationId.value,
+        ).singleOrNull()
+
     fun findByUserId(userId: UserId): Practitioner? =
         jdbcTemplate.query(
             """

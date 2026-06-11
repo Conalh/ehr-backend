@@ -122,7 +122,7 @@ class BackendServicesAuthIntegrationTest : PostgresIntegrationTest() {
         assertEquals("EXPORT", audit["resource_type"])
         assertEquals("SUCCESS", audit["outcome"])
         assertNull(audit["subject_user_id"])
-        assertEquals("policy-spine-v18", audit["policy_version"])
+        assertEquals("policy-spine-v19", audit["policy_version"])
 
         // Clinical reads are denied by role.
         val deniedCorrelationId = "as1-denied-${UUID.randomUUID()}"

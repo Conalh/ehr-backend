@@ -57,6 +57,8 @@ object FhirCapabilityRegistry {
         SupportedResource("DocumentReference", listOf(patientParam)),
         SupportedResource("DiagnosticReport", listOf(patientParam)),
         SupportedResource("CareTeam", listOf(patientParam)),
+        // Read-only: no search params means no search-type interaction.
+        SupportedResource("Practitioner", emptyList()),
         SupportedResource(
             type = "Provenance",
             searchParams = listOf(

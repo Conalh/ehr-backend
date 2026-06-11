@@ -41,15 +41,16 @@ class SmartConfigurationIntegrationTest : PostgresIntegrationTest() {
                         org.hamcrest.Matchers.containsInAnyOrder(
                             "client-confidential-symmetric",
                             "client-public",
+                            "sso-openid-connect",
                             "permission-user",
                             "permission-v1",
                             "permission-v2",
                         ),
                     )
                 }
-                // no unsupported launch/openid capabilities are advertised
+                // no unsupported launch capabilities are advertised
                 jsonPath("$.capabilities") {
-                    value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItems("launch-ehr", "sso-openid-connect")))
+                    value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItems("launch-ehr", "launch-standalone")))
                 }
             }
     }

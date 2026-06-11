@@ -7,6 +7,7 @@ import com.nimbusds.jose.jwk.source.JWKSource
 import com.nimbusds.jose.proc.SecurityContext
 import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.OAuthClientRepository
+import dev.ehr.identity.PractitionerRepository
 import dev.ehr.identity.UserRepository
 import dev.ehr.identity.UserStatus
 import dev.ehr.runtime.EhrProperties
@@ -168,8 +169,25 @@ class AuthorizationServerConfiguration {
         oauthClientRepository: OAuthClientRepository,
         userRepository: UserRepository,
         membershipRepository: MembershipRepository,
+        practitionerRepository: PractitionerRepository,
+        properties: EhrProperties,
     ): OAuth2TokenCustomizer<JwtEncodingContext> =
         OAuth2TokenCustomizer { context ->
+            // OIDC id_token: fhirUser only when the scope was granted AND the
+            // user has a practitioner identity — never a dangling reference.
+            if (context.tokenType.value == "id_token") {
+                if ("fhirUser" in context.authorizedScopes) {
+                    val user = userRepository.findByExternalSubject(context.getPrincipal<Authentication>().name)
+                    val practitioner = user?.let { practitionerRepository.findByUserId(it.id) }
+                    if (practitioner != null) {
+                        context.claims.claim(
+                            "fhirUser",
+                            "${properties.security.issuer}/fhir/r4/Practitioner/${practitioner.id.value}",
+                        )
+                    }
+                }
+                return@OAuth2TokenCustomizer
+            }
             if (context.tokenType != OAuth2TokenType.ACCESS_TOKEN) {
                 return@OAuth2TokenCustomizer
             }

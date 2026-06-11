@@ -117,7 +117,7 @@ class PatientApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals(patientId.toString(), audit.resourceId)
         assertEquals("CREATE", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
-        assertEquals("policy-spine-v18", audit.policyVersion)
+        assertEquals("policy-spine-v19", audit.policyVersion)
         assertEquals("ALLOWED", audit.policyReasonCode)
     }
 

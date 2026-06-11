@@ -41,8 +41,8 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                 jsonPath("$.rest[0].security.extension[0].extension[*].valueUri") {
                     value(org.hamcrest.Matchers.hasItem(endsWith("/oauth/token")))
                 }
-                // exactly the ten served resources, nothing more
-                jsonPath("$.rest[0].resource.length()") { value(10) }
+                // exactly the eleven served resources, nothing more
+                jsonPath("$.rest[0].resource.length()") { value(11) }
                 jsonPath("$.rest[0].resource[*].type") {
                     value(
                         containsInAnyOrder(
@@ -56,6 +56,7 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                             "DiagnosticReport",
                             "Provenance",
                             "CareTeam",
+                            "Practitioner",
                         ),
                     )
                 }
@@ -68,6 +69,10 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                 }
                 jsonPath("$.rest[0].resource[?(@.type=='Encounter')].interaction[*].code") {
                     value(containsInAnyOrder("read", "search-type"))
+                }
+                // Read-only resources never advertise search.
+                jsonPath("$.rest[0].resource[?(@.type=='Practitioner')].interaction[*].code") {
+                    value(containsInAnyOrder("read"))
                 }
             }
     }

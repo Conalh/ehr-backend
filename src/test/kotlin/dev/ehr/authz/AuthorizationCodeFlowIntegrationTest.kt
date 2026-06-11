@@ -56,6 +56,9 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
     lateinit var patientRepository: PatientRepository
 
     @Autowired
+    lateinit var practitionerRepository: dev.ehr.identity.PractitionerRepository
+
+    @Autowired
     lateinit var jwtDecoder: JwtDecoder
 
     @Autowired
@@ -86,13 +89,24 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
             redirectedUrlPattern("**/login")
         }
 
+        // The logged-in clinician has a practitioner identity, so fhirUser
+        // can point at a resource this server actually serves.
+        val practitioner = practitionerRepository.create(
+            userId = fixture.user.id,
+            displayName = fixture.user.displayName,
+            npi = (1_000_000_000L..9_999_999_999L).random().toString(),
+        )
+
         val session = devLogin(fixture.user)
         val code = authorize(session, clientIdentifier, challengeFor(verifier))
         val tokens = exchangeCode(clientIdentifier, code, verifier)
 
-        // The id_token identifies the logged-in user.
+        // The id_token identifies the logged-in user and their FHIR identity.
         val idToken = tokens["id_token"].asText()
-        assertEquals(fixture.user.externalSubject, jwtPayload(idToken)["sub"].asText())
+        val idClaims = jwtPayload(idToken)
+        assertEquals(fixture.user.externalSubject, idClaims["sub"].asText())
+        val fhirUser = idClaims["fhirUser"].asText()
+        assertTrue(fhirUser.endsWith("/fhir/r4/Practitioner/${practitioner.id.value}"))
 
         // The access token works against the clinical API through the
         // existing converter path (org claim from the single membership).
@@ -113,6 +127,21 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
         // posture for unauthenticated clients); rotation is proven on the
         // confidential client below.
         assertEquals(null, tokens["refresh_token"])
+    }
+
+    @Test
+    fun `users without a practitioner identity get no fhirUser claim`() {
+        val fixture = createClinicianFixture()
+        val clientIdentifier = registerClient(fixture, type = "PUBLIC")
+        val verifier = "verifier-${UUID.randomUUID()}-${UUID.randomUUID()}"
+        val session = devLogin(fixture.user)
+
+        val code = authorize(session, clientIdentifier, challengeFor(verifier))
+        val tokens = exchangeCode(clientIdentifier, code, verifier)
+
+        val idClaims = jwtPayload(tokens["id_token"].asText())
+        assertEquals(fixture.user.externalSubject, idClaims["sub"].asText())
+        assertEquals(null, idClaims["fhirUser"])
     }
 
     @Test
@@ -240,6 +269,7 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
         session: MockHttpSession,
         clientIdentifier: String,
         challenge: String,
+        scope: String = "openid fhirUser user/*.read user/*.write",
     ): String {
         // The authorize converter reads GET parameters from the query string,
         // which MockMvc's param() does not populate — and a pre-encoded URI
@@ -250,7 +280,7 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
                 "&scope={scope}&state={state}&code_challenge={challenge}&code_challenge_method=S256",
             clientIdentifier,
             REDIRECT_URI,
-            "openid user/*.read user/*.write",
+            scope,
             "state-${UUID.randomUUID()}",
             challenge,
         ) {
@@ -299,7 +329,7 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
                       "clientIdentifier": "$identifier",
                       "displayName": "Synthetic User App",
                       "clientType": "$type",
-                      "grantedScopes": "openid user/*.read user/*.write",
+                      "grantedScopes": "openid fhirUser user/*.read user/*.write",
                       "redirectUris": "$REDIRECT_URI"
                     }
                 """.trimIndent()

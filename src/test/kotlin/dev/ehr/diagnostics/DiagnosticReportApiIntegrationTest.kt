@@ -148,7 +148,7 @@ class DiagnosticReportApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals("CREATE", audit.operation)
         assertEquals("SUCCESS", audit.outcome)
         assertEquals(patient.id.value.toString(), audit.patientId)
-        assertEquals("policy-spine-v18", audit.policyVersion)
+        assertEquals("policy-spine-v19", audit.policyVersion)
     }
 
     @Test

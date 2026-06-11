@@ -55,10 +55,14 @@ class CapabilityStatementController(
                 CapabilityStatement.ResourceInteractionComponent()
                     .setCode(CapabilityStatement.TypeRestfulInteraction.READ),
             )
-            resource.addInteraction(
-                CapabilityStatement.ResourceInteractionComponent()
-                    .setCode(CapabilityStatement.TypeRestfulInteraction.SEARCHTYPE),
-            )
+            // Never advertise an interaction that does not exist: search is
+            // claimed only for resources with declared search parameters.
+            if (supported.searchParams.isNotEmpty()) {
+                resource.addInteraction(
+                    CapabilityStatement.ResourceInteractionComponent()
+                        .setCode(CapabilityStatement.TypeRestfulInteraction.SEARCHTYPE),
+                )
+            }
             supported.searchParams.forEach { param ->
                 resource.addSearchParam(
                     CapabilityStatement.CapabilityStatementRestResourceSearchParamComponent()

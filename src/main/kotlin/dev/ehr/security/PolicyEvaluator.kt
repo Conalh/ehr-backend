@@ -210,7 +210,7 @@ class PolicyEvaluator(
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v18"
+        const val POLICY_VERSION = "policy-spine-v19"
 
         // HL7 v3 PurposeOfUse code for emergency treatment (break-glass).
         const val PURPOSE_EMERGENCY_TREATMENT = "ETREAT"
@@ -272,6 +272,11 @@ class PolicyEvaluator(
             PolicyResourceType.EXPORT to mapOf(
                 PolicyOperation.READ to PolicyRule(CLINICIAN_AND_SYSTEM_APP, "*", requiresWildcardResource = true),
                 PolicyOperation.WRITE to PolicyRule(CLINICIAN_AND_SYSTEM_APP, "*", requiresWildcardResource = true),
+            ),
+            // Practitioner directory: read-only, scheduling-adjacent like
+            // PATIENT, so staff retain read access.
+            PolicyResourceType.PRACTITIONER to mapOf(
+                PolicyOperation.READ to PolicyRule(CLINICIAN_AND_STAFF, "Practitioner"),
             ),
             // Care-team membership management: clinicians and org admins.
             PolicyResourceType.CARE_TEAM to mapOf(
