@@ -51,6 +51,7 @@ data class OAuthClient(
     // Argon2id hash; the plain secret exists only in the registration response.
     val secretHash: String?,
     val grantedScopes: String,
+    val redirectUris: String,
     val createdAt: Instant,
     val updatedAt: Instant,
 )

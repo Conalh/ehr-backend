@@ -25,6 +25,7 @@ management:
 ehr:
   security:
     dev-jwt-secret: ${EHR_DEV_JWT_SECRET:ehr-core-local-dev-jwt-secret-32-byte-minimum}
+    dev-login-password: ${EHR_DEV_LOGIN_PASSWORD:ehr-core-local-dev-login}
 
 logging:
   pattern:

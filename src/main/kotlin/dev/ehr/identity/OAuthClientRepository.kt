@@ -17,13 +17,14 @@ class OAuthClientRepository(
         clientType: OAuthClientType = OAuthClientType.PUBLIC,
         secretHash: String? = null,
         grantedScopes: String = "",
+        redirectUris: String = "",
     ): OAuthClient =
         jdbcTemplate.queryForObject(
             """
             insert into oauth_clients (
-              organization_id, client_identifier, display_name, client_type, secret_hash, granted_scopes
+              organization_id, client_identifier, display_name, client_type, secret_hash, granted_scopes, redirect_uris
             )
-            values (?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?)
             returning $COLUMNS
             """.trimIndent(),
             rowMapper,
@@ -33,6 +34,7 @@ class OAuthClientRepository(
             clientType.dbValue,
             secretHash,
             grantedScopes,
+            redirectUris,
         )!!
 
     /** Identity-level lookup for token issuance and system-token resolution. */
@@ -104,6 +106,7 @@ class OAuthClientRepository(
               client_type,
               secret_hash,
               granted_scopes,
+              redirect_uris,
               created_at,
               updated_at
         """
@@ -118,6 +121,7 @@ class OAuthClientRepository(
                 clientType = OAuthClientType.fromDb(rs.getString("client_type")),
                 secretHash = rs.getString("secret_hash"),
                 grantedScopes = rs.getString("granted_scopes"),
+                redirectUris = rs.getString("redirect_uris"),
                 createdAt = rs.getTimestamp("created_at").toInstant(),
                 updatedAt = rs.getTimestamp("updated_at").toInstant(),
             )

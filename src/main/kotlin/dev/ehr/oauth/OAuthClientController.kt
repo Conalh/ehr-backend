@@ -36,6 +36,7 @@ class OAuthClientController(
             displayName = request.displayName,
             clientType = request.clientType ?: OAuthClientType.PUBLIC,
             grantedScopes = request.grantedScopes ?: "",
+            redirectUris = request.redirectUris ?: "",
         )
         // The plain secret appears in this response and never again.
         return registered.client.toResponse(clientSecret = registered.clientSecret)
@@ -79,6 +80,7 @@ data class RegisterOAuthClientRequest(
     val displayName: String,
     val clientType: OAuthClientType? = null,
     val grantedScopes: String? = null,
+    val redirectUris: String? = null,
 )
 
 data class OAuthClientResponse(
@@ -89,6 +91,7 @@ data class OAuthClientResponse(
     val status: String,
     val clientType: String,
     val grantedScopes: String,
+    val redirectUris: String,
     // Present only in the registration response for confidential/system clients.
     val clientSecret: String? = null,
     val createdAt: Instant,
@@ -108,6 +111,7 @@ private fun OAuthClient.toResponse(clientSecret: String? = null): OAuthClientRes
         status = status.dbValue,
         clientType = clientType.dbValue,
         grantedScopes = grantedScopes,
+        redirectUris = redirectUris,
         clientSecret = clientSecret,
         createdAt = createdAt,
         updatedAt = updatedAt,

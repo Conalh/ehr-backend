@@ -40,12 +40,17 @@ class OAuthClientService(
 ) {
     private val secureRandom = SecureRandom()
 
+    private companion object {
+        val OIDC_SCOPES = setOf("openid", "fhirUser")
+    }
+
     fun register(
         principal: SecurityPrincipal,
         clientIdentifier: String,
         displayName: String,
         clientType: OAuthClientType,
         grantedScopes: String,
+        redirectUris: String,
     ): RegisteredOAuthClient {
         val decision = evaluate(principal, PolicyOperation.WRITE)
         if (!decision.allowed) {
@@ -56,8 +61,19 @@ class OAuthClientService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Client identifier and display name must not be blank")
         }
         val normalizedScopes = grantedScopes.trim()
-        if (SecurityScope.parse(normalizedScopes).any { SmartScope.parse(it.rawValue) == null }) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Granted scopes must be valid SMART scopes")
+        val invalidScope = SecurityScope.parse(normalizedScopes).any { scope ->
+            scope.rawValue !in OIDC_SCOPES && SmartScope.parse(scope.rawValue) == null
+        }
+        if (invalidScope) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Granted scopes must be valid SMART or OIDC scopes")
+        }
+        // Redirect URIs are optional at registration: a client without one is
+        // a directory entry that simply cannot run the authorization-code
+        // flow (the registered-client adapter fails it closed).
+        val normalizedRedirectUris = redirectUris.trim()
+        val redirectUriList = normalizedRedirectUris.split(" ").filter { it.isNotBlank() }
+        if (redirectUriList.any { !isAbsoluteHttpUri(it) }) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Redirect URIs must be absolute http(s) URIs")
         }
 
         val clientSecret = if (clientType == OAuthClientType.PUBLIC) null else generateSecret()
@@ -70,6 +86,7 @@ class OAuthClientService(
                     clientType = clientType,
                     secretHash = clientSecret?.let(passwordEncoder::encode),
                     grantedScopes = normalizedScopes,
+                    redirectUris = normalizedRedirectUris,
                 )
                 auditEventService.recordResourceAccess(
                     decision = decision,
@@ -83,6 +100,12 @@ class OAuthClientService(
             throw ResponseStatusException(HttpStatus.CONFLICT, "Client identifier already exists")
         }
     }
+
+    private fun isAbsoluteHttpUri(value: String): Boolean =
+        runCatching {
+            val uri = java.net.URI(value)
+            (uri.scheme == "http" || uri.scheme == "https") && uri.host != null
+        }.getOrDefault(false)
 
     private fun generateSecret(): String {
         val bytes = ByteArray(32)

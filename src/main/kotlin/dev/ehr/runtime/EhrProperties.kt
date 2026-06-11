@@ -31,6 +31,12 @@ data class EhrProperties(
         // resource-server decoder routes on it.
         @field:NotBlank
         val issuer: String = "http://localhost:8080",
+        // Shared password for the authorization server's dev login page —
+        // users carry no credentials (synthetic data, no IdP). Loudly
+        // dev-only, same fail-at-boot posture as the dev JWT secret.
+        @field:NotBlank
+        @field:Size(min = 16, message = "ehr.security.dev-login-password must be at least 16 characters")
+        val devLoginPassword: String = "",
     )
 
     data class Export(

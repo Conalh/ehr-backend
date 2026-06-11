@@ -24,12 +24,23 @@ class SmartConfigurationIntegrationTest : PostgresIntegrationTest() {
                 status { isOk() }
                 jsonPath("$.authorization_endpoint") { value(org.hamcrest.Matchers.endsWith("/oauth/authorize")) }
                 jsonPath("$.token_endpoint") { value(org.hamcrest.Matchers.endsWith("/oauth/token")) }
-                jsonPath("$.grant_types_supported[0]") { value("client_credentials") }
+                jsonPath("$.revocation_endpoint") { value(org.hamcrest.Matchers.endsWith("/oauth/revoke")) }
+                jsonPath("$.grant_types_supported") {
+                    value(
+                        org.hamcrest.Matchers.containsInAnyOrder(
+                            "authorization_code",
+                            "refresh_token",
+                            "client_credentials",
+                        ),
+                    )
+                }
+                jsonPath("$.code_challenge_methods_supported[0]") { value("S256") }
                 jsonPath("$.scopes_supported") { value(org.hamcrest.Matchers.hasItems("user/*.read", "system/*.cruds", "openid")) }
                 jsonPath("$.capabilities") {
                     value(
                         org.hamcrest.Matchers.containsInAnyOrder(
                             "client-confidential-symmetric",
+                            "client-public",
                             "permission-user",
                             "permission-v1",
                             "permission-v2",
@@ -44,19 +55,22 @@ class SmartConfigurationIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `the token endpoint is live and the authorize stub refuses loudly`() {
+    fun `the oauth endpoints are live`() {
         // The embedded authorization server owns /oauth/token now: a bare
-        // request is an OAuth protocol error (missing grant_type), not a 501.
+        // request fails client authentication, not a 501.
         mockMvc.post("/oauth/token")
             .andExpect {
-                status { isBadRequest() }
+                status { isUnauthorized() }
             }
 
-        mockMvc.get("/oauth/authorize")
-            .andExpect {
-                status { isNotImplemented() }
-                jsonPath("$.error") { value("unsupported") }
-            }
+        // A bare authorize request is an OAuth protocol error (missing
+        // client_id); the dev-login redirect for well-formed requests is
+        // proven in AuthorizationCodeFlowIntegrationTest.
+        mockMvc.get("/oauth/authorize") {
+            accept = org.springframework.http.MediaType.TEXT_HTML
+        }.andExpect {
+            status { isBadRequest() }
+        }
     }
 
     @Test
