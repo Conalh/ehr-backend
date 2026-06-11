@@ -132,7 +132,7 @@ class PolicyEvaluator {
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v14"
+        const val POLICY_VERSION = "policy-spine-v15"
 
         private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
         private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)
@@ -179,6 +179,17 @@ class PolicyEvaluator {
             PolicyResourceType.EXPORT to mapOf(
                 PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
                 PolicyOperation.WRITE to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
+            ),
+            // Care-team membership management: clinicians and org admins.
+            PolicyResourceType.CARE_TEAM to mapOf(
+                PolicyOperation.READ to PolicyRule(
+                    setOf(MembershipRole.CLINICIAN, MembershipRole.ORG_ADMIN),
+                    "CareTeam",
+                ),
+                PolicyOperation.WRITE to PolicyRule(
+                    setOf(MembershipRole.CLINICIAN, MembershipRole.ORG_ADMIN),
+                    "CareTeam",
+                ),
             ),
         )
     }

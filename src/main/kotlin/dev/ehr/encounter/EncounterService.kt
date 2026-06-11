@@ -1,6 +1,9 @@
 package dev.ehr.encounter
 
 import dev.ehr.identity.TenantScope
+import dev.ehr.careteam.CareTeamMembershipOrigin
+import dev.ehr.careteam.CareTeamRepository
+import dev.ehr.careteam.CareTeamRole
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceRecorder
@@ -25,6 +28,7 @@ class EncounterService(
     private val auditEventService: AuditEventService,
     private val encounterRepository: EncounterRepository,
     private val patientRepository: PatientRepository,
+    private val careTeamRepository: CareTeamRepository,
     private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
@@ -48,6 +52,17 @@ class EncounterService(
         try {
             return transactionTemplate.execute {
                 val encounter = encounterRepository.create(command)
+                // Opening an encounter establishes a treatment relationship
+                // (compartment authorization design, decision 1C).
+                principal.subject.userId?.let { actingUserId ->
+                    careTeamRepository.ensureMembership(
+                        organizationId = encounter.organizationId,
+                        patientId = encounter.patientId,
+                        userId = actingUserId,
+                        role = CareTeamRole.CARE_TEAM,
+                        origin = CareTeamMembershipOrigin.ENCOUNTER_DERIVED,
+                    )
+                }
                 provenanceRecorder.recordCreated(
                     principal = principal,
                     patientId = encounter.patientId.value,

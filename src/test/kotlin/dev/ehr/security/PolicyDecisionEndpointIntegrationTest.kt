@@ -76,7 +76,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
             jsonPath("$.scopeBasis[0].rawValue") { value("user/*.read") }
             jsonPath("$.relationshipBasis") { doesNotExist() }
             jsonPath("$.purposeOfUse") { doesNotExist() }
-            jsonPath("$.policyVersion") { value("policy-spine-v14") }
+            jsonPath("$.policyVersion") { value("policy-spine-v15") }
             jsonPath("$.reasonCode") { value("ALLOWED") }
         }
 
@@ -87,7 +87,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
         assertEquals("ORGANIZATION", auditRow.resourceType)
         assertEquals("READ", auditRow.operation)
         assertEquals("SUCCESS", auditRow.outcome)
-        assertEquals("policy-spine-v14", auditRow.policyVersion)
+        assertEquals("policy-spine-v15", auditRow.policyVersion)
         assertEquals("ALLOWED", auditRow.policyReasonCode)
         assertEquals(correlationId, auditRow.correlationId)
         assertEquals("{}", auditRow.metadata)
@@ -118,7 +118,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
         assertEquals("ORGANIZATION", auditRow.resourceType)
         assertEquals("AUTHORIZATION_DENIED", auditRow.operation)
         assertEquals("DENIED", auditRow.outcome)
-        assertEquals("policy-spine-v14", auditRow.policyVersion)
+        assertEquals("policy-spine-v15", auditRow.policyVersion)
         assertEquals("INSUFFICIENT_ROLE", auditRow.policyReasonCode)
         assertEquals(correlationId, auditRow.correlationId)
     }
@@ -181,7 +181,7 @@ class PolicyDecisionEndpointIntegrationTest : PostgresIntegrationTest() {
         assertEquals("ORGANIZATION", auditRow.resourceType)
         assertEquals("AUTHORIZATION_DENIED", auditRow.operation)
         assertEquals("DENIED", auditRow.outcome)
-        assertEquals("policy-spine-v14", auditRow.policyVersion)
+        assertEquals("policy-spine-v15", auditRow.policyVersion)
         assertEquals("ORGANIZATION_MISMATCH", auditRow.policyReasonCode)
         assertEquals(correlationId, auditRow.correlationId)
         assertEquals("{}", auditRow.metadata)
