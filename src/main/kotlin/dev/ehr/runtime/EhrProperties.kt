@@ -27,6 +27,10 @@ data class EhrProperties(
         @field:NotBlank
         @field:Size(min = 32, message = "ehr.security.dev-jwt-secret must be at least 32 bytes for HS256")
         val devJwtSecret: String = "",
+        // Issuer of tokens minted by the embedded authorization server; the
+        // resource-server decoder routes on it.
+        @field:NotBlank
+        val issuer: String = "http://localhost:8080",
     )
 
     data class Export(

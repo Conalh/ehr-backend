@@ -14,18 +14,38 @@ class OAuthClientRepository(
         organizationId: OrganizationId,
         clientIdentifier: String,
         displayName: String,
+        clientType: OAuthClientType = OAuthClientType.PUBLIC,
+        secretHash: String? = null,
+        grantedScopes: String = "",
     ): OAuthClient =
         jdbcTemplate.queryForObject(
             """
-            insert into oauth_clients (organization_id, client_identifier, display_name)
-            values (?, ?, ?)
+            insert into oauth_clients (
+              organization_id, client_identifier, display_name, client_type, secret_hash, granted_scopes
+            )
+            values (?, ?, ?, ?, ?, ?)
             returning $COLUMNS
             """.trimIndent(),
             rowMapper,
             organizationId.value,
             clientIdentifier,
             displayName,
+            clientType.dbValue,
+            secretHash,
+            grantedScopes,
         )!!
+
+    /** Identity-level lookup for token issuance and system-token resolution. */
+    fun findByClientIdentifier(clientIdentifier: String): OAuthClient? =
+        jdbcTemplate.query(
+            """
+            select $COLUMNS
+            from oauth_clients
+            where client_identifier = ?
+            """.trimIndent(),
+            rowMapper,
+            clientIdentifier,
+        ).singleOrNull()
 
     fun findById(
         tenantScope: TenantScope,
@@ -81,6 +101,9 @@ class OAuthClientRepository(
               client_identifier,
               display_name,
               status,
+              client_type,
+              secret_hash,
+              granted_scopes,
               created_at,
               updated_at
         """
@@ -92,6 +115,9 @@ class OAuthClientRepository(
                 clientIdentifier = rs.getString("client_identifier"),
                 displayName = rs.getString("display_name"),
                 status = OAuthClientStatus.fromDb(rs.getString("status")),
+                clientType = OAuthClientType.fromDb(rs.getString("client_type")),
+                secretHash = rs.getString("secret_hash"),
+                grantedScopes = rs.getString("granted_scopes"),
                 createdAt = rs.getTimestamp("created_at").toInstant(),
                 updatedAt = rs.getTimestamp("updated_at").toInstant(),
             )

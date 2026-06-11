@@ -44,12 +44,12 @@ class SmartConfigurationIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `oauth stubs refuse loudly and are public`() {
+    fun `the token endpoint is live and the authorize stub refuses loudly`() {
+        // The embedded authorization server owns /oauth/token now: a bare
+        // request is an OAuth protocol error (missing grant_type), not a 501.
         mockMvc.post("/oauth/token")
             .andExpect {
-                status { isNotImplemented() }
-                jsonPath("$.error") { value("unsupported_grant_type") }
-                jsonPath("$.error_description") { exists() }
+                status { isBadRequest() }
             }
 
         mockMvc.get("/oauth/authorize")

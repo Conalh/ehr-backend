@@ -36,18 +36,9 @@ class SmartConfigurationController {
         )
     }
 
-    // Explicit integration points for a future authorization server: they refuse
-    // loudly rather than pretending to run an OAuth flow.
-    @PostMapping("/oauth/token")
-    fun tokenStub(): ResponseEntity<OAuthStubResponse> =
-        ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(
-            OAuthStubResponse(
-                error = "unsupported_grant_type",
-                errorDescription = "This deployment issues development tokens only; " +
-                    "the token endpoint is an integration point for a future authorization server.",
-            ),
-        )
-
+    // The token endpoint is live (embedded authorization server, Slice AS1).
+    // The authorize endpoint remains an explicit integration point until AS2:
+    // it refuses loudly rather than pretending to run an OAuth flow.
     @GetMapping("/oauth/authorize")
     fun authorizeStub(): ResponseEntity<OAuthStubResponse> =
         ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(

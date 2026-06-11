@@ -2,6 +2,7 @@ package dev.ehr.oauth
 
 import dev.ehr.identity.OAuthClient
 import dev.ehr.identity.OAuthClientId
+import dev.ehr.identity.OAuthClientType
 import dev.ehr.security.SecurityPrincipal
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -28,12 +29,17 @@ class OAuthClientController(
     fun register(
         authentication: Authentication,
         @Valid @RequestBody request: RegisterOAuthClientRequest,
-    ): OAuthClientResponse =
-        oauthClientService.register(
+    ): OAuthClientResponse {
+        val registered = oauthClientService.register(
             principal = securityPrincipal(authentication),
             clientIdentifier = request.clientIdentifier,
             displayName = request.displayName,
-        ).toResponse()
+            clientType = request.clientType ?: OAuthClientType.PUBLIC,
+            grantedScopes = request.grantedScopes ?: "",
+        )
+        // The plain secret appears in this response and never again.
+        return registered.client.toResponse(clientSecret = registered.clientSecret)
+    }
 
     @GetMapping("/{clientId}")
     fun get(
@@ -71,6 +77,8 @@ data class RegisterOAuthClientRequest(
     val clientIdentifier: String,
     @field:NotBlank
     val displayName: String,
+    val clientType: OAuthClientType? = null,
+    val grantedScopes: String? = null,
 )
 
 data class OAuthClientResponse(
@@ -79,6 +87,10 @@ data class OAuthClientResponse(
     val clientIdentifier: String,
     val displayName: String,
     val status: String,
+    val clientType: String,
+    val grantedScopes: String,
+    // Present only in the registration response for confidential/system clients.
+    val clientSecret: String? = null,
     val createdAt: Instant,
     val updatedAt: Instant,
 )
@@ -87,13 +99,16 @@ data class OAuthClientListResponse(
     val clients: List<OAuthClientResponse>,
 )
 
-private fun OAuthClient.toResponse(): OAuthClientResponse =
+private fun OAuthClient.toResponse(clientSecret: String? = null): OAuthClientResponse =
     OAuthClientResponse(
         id = id.value.toString(),
         organizationId = organizationId?.value?.toString(),
         clientIdentifier = clientIdentifier,
         displayName = displayName,
         status = status.dbValue,
+        clientType = clientType.dbValue,
+        grantedScopes = grantedScopes,
+        clientSecret = clientSecret,
         createdAt = createdAt,
         updatedAt = updatedAt,
     )

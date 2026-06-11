@@ -210,13 +210,14 @@ class PolicyEvaluator(
     )
 
     companion object {
-        const val POLICY_VERSION = "policy-spine-v17"
+        const val POLICY_VERSION = "policy-spine-v18"
 
         // HL7 v3 PurposeOfUse code for emergency treatment (break-glass).
         const val PURPOSE_EMERGENCY_TREATMENT = "ETREAT"
 
         private val CLINICIAN_ONLY = setOf(MembershipRole.CLINICIAN)
         private val CLINICIAN_AND_STAFF = setOf(MembershipRole.CLINICIAN, MembershipRole.STAFF)
+        private val CLINICIAN_AND_SYSTEM_APP = setOf(MembershipRole.CLINICIAN, MembershipRole.SYSTEM_APP)
         private val ADMINS = setOf(MembershipRole.ORG_ADMIN, MembershipRole.SYSTEM_ADMIN)
 
         private fun readWrite(
@@ -265,11 +266,12 @@ class PolicyEvaluator(
                 PolicyOperation.READ to PolicyRule(ADMINS, "*", requiresWildcardResource = true),
                 PolicyOperation.WRITE to PolicyRule(ADMINS, "*", requiresWildcardResource = true),
             ),
-            // Bulk export covers the whole population: clinician-only with wildcard scopes.
-            // System-app requesters arrive with system-app principals (deferred).
+            // Bulk export covers the whole population: clinicians and
+            // backend-services clients (SYSTEM_APP), with wildcard scopes.
+            // Export is the only SYSTEM_APP surface (AS design decision 3).
             PolicyResourceType.EXPORT to mapOf(
-                PolicyOperation.READ to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
-                PolicyOperation.WRITE to PolicyRule(CLINICIAN_ONLY, "*", requiresWildcardResource = true),
+                PolicyOperation.READ to PolicyRule(CLINICIAN_AND_SYSTEM_APP, "*", requiresWildcardResource = true),
+                PolicyOperation.WRITE to PolicyRule(CLINICIAN_AND_SYSTEM_APP, "*", requiresWildcardResource = true),
             ),
             // Care-team membership management: clinicians and org admins.
             PolicyResourceType.CARE_TEAM to mapOf(

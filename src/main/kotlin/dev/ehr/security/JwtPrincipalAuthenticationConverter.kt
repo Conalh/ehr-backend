@@ -1,7 +1,11 @@
 package dev.ehr.security
 
+import dev.ehr.identity.MembershipId
 import dev.ehr.identity.MembershipRepository
+import dev.ehr.identity.MembershipRole
 import dev.ehr.identity.OAuthClientId
+import dev.ehr.identity.OAuthClientRepository
+import dev.ehr.identity.OAuthClientStatus
 import dev.ehr.identity.Organization
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.OrganizationRepository
@@ -22,8 +26,12 @@ class JwtPrincipalAuthenticationConverter(
     private val userRepository: UserRepository,
     private val organizationRepository: OrganizationRepository,
     private val membershipRepository: MembershipRepository,
+    private val oauthClientRepository: OAuthClientRepository,
 ) : Converter<Jwt, AbstractAuthenticationToken> {
     override fun convert(jwt: Jwt): AbstractAuthenticationToken {
+        if (jwt.getClaimAsString(SYSTEM_PRINCIPAL_CLAIM) == SYSTEM_PRINCIPAL_VALUE) {
+            return convertSystemApp(jwt)
+        }
         val externalSubject = jwt.subject?.trim()?.takeIf { it.isNotEmpty() }
             ?: invalidToken("JWT subject is required")
         val user = userRepository.findByExternalSubject(externalSubject)
@@ -60,6 +68,46 @@ class JwtPrincipalAuthenticationConverter(
         )
         val authorities = scopes.map { SimpleGrantedAuthority("SCOPE_${it.rawValue}") }
 
+        return UsernamePasswordAuthenticationToken(principal, jwt, authorities)
+    }
+
+    /**
+     * Backend-services tokens (client_credentials) carry no user. The client
+     * is re-resolved on every request, so revocation is immediate even for
+     * live tokens. The synthetic membership id reuses the client id —
+     * evidence-only; no membership row exists for a client.
+     */
+    private fun convertSystemApp(jwt: Jwt): AbstractAuthenticationToken {
+        val clientIdentifier = jwt.subject?.trim()?.takeIf { it.isNotEmpty() }
+            ?: invalidToken("JWT subject is required")
+        val client = oauthClientRepository.findByClientIdentifier(clientIdentifier)
+            ?: invalidToken("JWT subject is not a registered client")
+        if (client.status != OAuthClientStatus.ACTIVE) {
+            invalidToken("Client is not active")
+        }
+        val organization = client.organizationId?.let { organizationRepository.findById(it) }
+            ?: invalidToken("Client is not linked to an organization")
+        if (organization.status != OrganizationStatus.ACTIVE) {
+            invalidToken("Client organization is not active")
+        }
+
+        val scopes = extractScopes(jwt)
+        val principal = SecurityPrincipal(
+            subject = AuthenticatedSubject(
+                externalSubject = clientIdentifier,
+                userId = null,
+                clientId = client.id,
+                scopes = scopes,
+            ),
+            organization = OrganizationContext(
+                organizationId = organization.id,
+            ),
+            membership = MembershipContext(
+                membershipId = MembershipId(client.id.value),
+                roles = listOf(MembershipRole.SYSTEM_APP),
+            ),
+        )
+        val authorities = scopes.map { SimpleGrantedAuthority("SCOPE_${it.rawValue}") }
         return UsernamePasswordAuthenticationToken(principal, jwt, authorities)
     }
 
@@ -124,4 +172,11 @@ class JwtPrincipalAuthenticationConverter(
         throw OAuth2AuthenticationException(
             OAuth2Error("invalid_token", description, null),
         )
+
+    companion object {
+        // Mirrors AuthorizationServerConfiguration's token customizer; kept
+        // here so the security package does not depend on authz.
+        const val SYSTEM_PRINCIPAL_CLAIM = "ehr_principal"
+        const val SYSTEM_PRINCIPAL_VALUE = "system-app"
+    }
 }

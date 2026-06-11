@@ -3,6 +3,7 @@ package dev.ehr.oauth
 import dev.ehr.identity.OAuthClient
 import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientRepository
+import dev.ehr.identity.OAuthClientType
 import dev.ehr.identity.TenantScope
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -12,24 +13,40 @@ import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.SecurityScope
+import dev.ehr.security.SmartScope
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.server.ResponseStatusException
+import java.security.SecureRandom
+import java.util.Base64
+
+/** The plain secret exists only here, in the registration response. */
+data class RegisteredOAuthClient(
+    val client: OAuthClient,
+    val clientSecret: String?,
+)
 
 @Service
 class OAuthClientService(
     private val policyEvaluator: PolicyEvaluator,
     private val auditEventService: AuditEventService,
     private val oauthClientRepository: OAuthClientRepository,
+    private val passwordEncoder: PasswordEncoder,
     private val transactionTemplate: TransactionTemplate,
 ) {
+    private val secureRandom = SecureRandom()
+
     fun register(
         principal: SecurityPrincipal,
         clientIdentifier: String,
         displayName: String,
-    ): OAuthClient {
+        clientType: OAuthClientType,
+        grantedScopes: String,
+    ): RegisteredOAuthClient {
         val decision = evaluate(principal, PolicyOperation.WRITE)
         if (!decision.allowed) {
             auditEventService.recordDeniedAccess(decision)
@@ -38,13 +55,21 @@ class OAuthClientService(
         if (clientIdentifier.isBlank() || displayName.isBlank()) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Client identifier and display name must not be blank")
         }
+        val normalizedScopes = grantedScopes.trim()
+        if (SecurityScope.parse(normalizedScopes).any { SmartScope.parse(it.rawValue) == null }) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Granted scopes must be valid SMART scopes")
+        }
 
+        val clientSecret = if (clientType == OAuthClientType.PUBLIC) null else generateSecret()
         try {
             return transactionTemplate.execute {
                 val client = oauthClientRepository.create(
                     organizationId = principal.organization.organizationId,
                     clientIdentifier = clientIdentifier,
                     displayName = displayName,
+                    clientType = clientType,
+                    secretHash = clientSecret?.let(passwordEncoder::encode),
+                    grantedScopes = normalizedScopes,
                 )
                 auditEventService.recordResourceAccess(
                     decision = decision,
@@ -52,11 +77,17 @@ class OAuthClientService(
                     outcome = AuditOutcome.SUCCESS,
                     resourceId = client.id.value,
                 )
-                client
+                RegisteredOAuthClient(client, clientSecret)
             }!!
         } catch (exception: DuplicateKeyException) {
             throw ResponseStatusException(HttpStatus.CONFLICT, "Client identifier already exists")
         }
+    }
+
+    private fun generateSecret(): String {
+        val bytes = ByteArray(32)
+        secureRandom.nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     fun get(

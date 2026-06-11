@@ -1,6 +1,10 @@
 package dev.ehr.security
 
+import com.nimbusds.jose.jwk.source.JWKSource
+import com.nimbusds.jose.proc.SecurityContext
+import com.nimbusds.jwt.JWTParser
 import dev.ehr.identity.MembershipRepository
+import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OrganizationRepository
 import dev.ehr.identity.UserRepository
 import dev.ehr.runtime.EhrProperties
@@ -13,6 +17,7 @@ import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
+import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter
 import java.nio.charset.StandardCharsets
@@ -27,11 +32,13 @@ class SecurityConfiguration {
         userRepository: UserRepository,
         organizationRepository: OrganizationRepository,
         membershipRepository: MembershipRepository,
+        oauthClientRepository: OAuthClientRepository,
     ): JwtPrincipalAuthenticationConverter =
         JwtPrincipalAuthenticationConverter(
             userRepository = userRepository,
             organizationRepository = organizationRepository,
             membershipRepository = membershipRepository,
+            oauthClientRepository = oauthClientRepository,
         )
 
     @Bean
@@ -76,11 +83,30 @@ class SecurityConfiguration {
     @Bean
     fun tenantContextFilter(): TenantContextFilter = TenantContextFilter()
 
+    /**
+     * Routes by unverified issuer: tokens minted by the embedded
+     * authorization server validate against its local JWKS (RS256);
+     * everything else falls through to the HS256 dev decoder.
+     */
     @Bean
-    fun jwtDecoder(properties: EhrProperties): JwtDecoder =
-        NimbusJwtDecoder.withSecretKey(devJwtSecretKey(properties.security.devJwtSecret))
+    fun jwtDecoder(
+        properties: EhrProperties,
+        jwkSource: JWKSource<SecurityContext>,
+    ): JwtDecoder {
+        val devDecoder = NimbusJwtDecoder.withSecretKey(devJwtSecretKey(properties.security.devJwtSecret))
             .macAlgorithm(MacAlgorithm.HS256)
             .build()
+        val authorizationServerDecoder = OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource)
+        val embeddedIssuer = properties.security.issuer
+        return JwtDecoder { token ->
+            val unverifiedIssuer = runCatching { JWTParser.parse(token).jwtClaimsSet.issuer }.getOrNull()
+            if (unverifiedIssuer == embeddedIssuer) {
+                authorizationServerDecoder.decode(token)
+            } else {
+                devDecoder.decode(token)
+            }
+        }
+    }
 
     private fun devJwtSecretKey(devJwtSecret: String): SecretKey =
         SecretKeySpec(devJwtSecret.toByteArray(StandardCharsets.UTF_8), "HmacSHA256")

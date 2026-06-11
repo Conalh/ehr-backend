@@ -59,6 +59,18 @@ enum class OAuthClientStatus(val dbValue: String) {
     }
 }
 
+enum class OAuthClientType(val dbValue: String) {
+    PUBLIC("public"),
+    CONFIDENTIAL("confidential"),
+    SYSTEM("system"),
+    ;
+
+    companion object {
+        fun fromDb(dbValue: String): OAuthClientType =
+            entries.first { it.dbValue == dbValue }
+    }
+}
+
 enum class MembershipRole(val dbValue: String) {
     SYSTEM_ADMIN("SYSTEM_ADMIN"),
     ORG_ADMIN("ORG_ADMIN"),

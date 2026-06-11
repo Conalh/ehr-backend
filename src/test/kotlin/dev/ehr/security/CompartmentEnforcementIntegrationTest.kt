@@ -101,7 +101,7 @@ class CompartmentEnforcementIntegrationTest : PostgresIntegrationTest() {
         val listAudit = auditRow(listCorrelationId)
         assertEquals("AUTHORIZATION_DENIED", listAudit.operation)
         assertEquals("NO_TREATMENT_RELATIONSHIP", listAudit.policyReasonCode)
-        assertEquals("policy-spine-v17", listAudit.policyVersion)
+        assertEquals("policy-spine-v18", listAudit.policyVersion)
 
         // Stranger: get-by-id denied at the post-fetch re-evaluation.
         mockMvc.get("/api/v1/conditions/$conditionId") {
