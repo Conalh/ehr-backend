@@ -1,6 +1,7 @@
 package dev.ehr.fhir
 
 import dev.ehr.observation.Observation
+import dev.ehr.observation.ObservationCategory
 import dev.ehr.observation.ObservationStatus
 import dev.ehr.observation.ObservationValue
 import dev.ehr.terminology.CanonicalCodeSystems
@@ -28,6 +29,13 @@ class ObservationFhirMapper {
         fhirObservation.id = observation.id.value.toString()
         fhirObservation.meta.versionId = observation.version.toString()
         fhirObservation.meta.lastUpdated = Date.from(observation.updatedAt)
+        // Exactly the US Core profile matching this instance's category.
+        fhirObservation.meta.addProfile(
+            when (observation.category) {
+                ObservationCategory.VITAL_SIGNS -> US_CORE_VITAL_SIGNS_PROFILE
+                ObservationCategory.LABORATORY -> US_CORE_LAB_PROFILE
+            },
+        )
         fhirObservation.status = toFhirStatus(observation.status)
         fhirObservation.addCategory(
             FhirCodeableConcept().addCoding(
@@ -79,5 +87,12 @@ class ObservationFhirMapper {
         }
         concept.text?.let(fhirConcept::setText)
         return fhirConcept
+    }
+
+    companion object {
+        const val US_CORE_VITAL_SIGNS_PROFILE =
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs"
+        const val US_CORE_LAB_PROFILE =
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab"
     }
 }

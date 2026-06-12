@@ -20,9 +20,10 @@ object FhirCapabilityRegistry {
     data class SupportedResource(
         val type: String,
         val searchParams: List<SupportedSearchParam>,
-        // Declared only once the conformance suite validates against it
-        // (US Core alignment design, decision 2).
-        val profile: String? = null,
+        // Declared only once the conformance suite validates against them
+        // (US Core alignment design, decision 2). Instances stamp exactly
+        // the profile matching their shape, never the whole list.
+        val profiles: List<String> = emptyList(),
     )
 
     private val patientParam = SupportedSearchParam(
@@ -41,7 +42,7 @@ object FhirCapabilityRegistry {
                     documentation = "Exact identifier match in system|value form.",
                 ),
             ),
-            profile = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient",
+            profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"),
         ),
         SupportedResource("Encounter", listOf(patientParam)),
         SupportedResource("Condition", listOf(patientParam)),
@@ -56,10 +57,18 @@ object FhirCapabilityRegistry {
                     documentation = "Observation category code (vital-signs or laboratory).",
                 ),
             ),
+            profiles = listOf(
+                "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs",
+                "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab",
+            ),
         ),
         SupportedResource("MedicationStatement", listOf(patientParam)),
         SupportedResource("DocumentReference", listOf(patientParam)),
-        SupportedResource("DiagnosticReport", listOf(patientParam)),
+        SupportedResource(
+            type = "DiagnosticReport",
+            searchParams = listOf(patientParam),
+            profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab"),
+        ),
         SupportedResource("CareTeam", listOf(patientParam)),
         // Read-only: no search params means no search-type interaction.
         SupportedResource("Practitioner", emptyList()),

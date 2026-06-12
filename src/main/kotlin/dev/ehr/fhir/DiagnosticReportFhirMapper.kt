@@ -22,7 +22,16 @@ class DiagnosticReportFhirMapper {
         fhirReport.id = report.id.value.toString()
         fhirReport.meta.versionId = report.version.toString()
         fhirReport.meta.lastUpdated = Date.from(report.updatedAt)
+        fhirReport.meta.addProfile(US_CORE_DIAGNOSTICREPORT_LAB_PROFILE)
         fhirReport.status = toFhirStatus(report.status)
+        // This model only produces order-result (laboratory) reports.
+        fhirReport.addCategory(
+            FhirCodeableConcept().addCoding(
+                Coding()
+                    .setSystem(V2_0074_SYSTEM)
+                    .setCode("LAB"),
+            ),
+        )
         fhirReport.code = toFhirConcept(codeConcept)
         fhirReport.subject = Reference("Patient/${report.patientId.value}")
         report.encounterId?.let { encounterId ->
@@ -34,6 +43,12 @@ class DiagnosticReportFhirMapper {
         report.conclusionText?.let(fhirReport::setConclusion)
         fhirReport.issuedElement = InstantType(Date.from(report.issuedAt))
             .apply { setTimeZoneZulu(true) }
+        // US Core lab reports require effective[x]; specimen-collection time
+        // is not modeled, so the issue time is the honest approximation.
+        fhirReport.effective = org.hl7.fhir.r4.model.DateTimeType(
+            Date.from(report.issuedAt),
+            ca.uhn.fhir.model.api.TemporalPrecisionEnum.SECOND,
+        ).apply { setTimeZoneZulu(true) }
 
         return fhirReport
     }
@@ -58,5 +73,11 @@ class DiagnosticReportFhirMapper {
         }
         concept.text?.let(fhirConcept::setText)
         return fhirConcept
+    }
+
+    companion object {
+        const val US_CORE_DIAGNOSTICREPORT_LAB_PROFILE =
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab"
+        const val V2_0074_SYSTEM = "http://terminology.hl7.org/CodeSystem/v2-0074"
     }
 }

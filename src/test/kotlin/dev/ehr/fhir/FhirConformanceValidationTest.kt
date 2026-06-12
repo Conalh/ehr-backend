@@ -167,6 +167,13 @@ class FhirConformanceValidationTest {
             createdBy = null,
             updatedBy = null,
         )
+        val glucose = concept("http://loinc.org", "2345-7", "Glucose [Mass/volume] in Serum or Plasma")
+        val labObservation = observation.copy(
+            id = ObservationId(UUID.randomUUID()),
+            category = ObservationCategory.LABORATORY,
+            codeConceptId = glucose.id,
+            value = ObservationValue.Quantity(BigDecimal("95"), "mg/dL"),
+        )
         val medication = MedicationStatement(
             id = MedicationStatementId(UUID.randomUUID()),
             organizationId = organizationId,
@@ -277,7 +284,8 @@ class FhirConformanceValidationTest {
             "Encounter" to EncounterFhirMapper().toFhirEncounter(encounter, actCode),
             "Condition" to ConditionFhirMapper().toFhirCondition(condition, snomed),
             "AllergyIntolerance" to AllergyFhirMapper().toFhirAllergyIntolerance(allergy, snomed),
-            "Observation" to ObservationFhirMapper().toFhirObservation(observation, loinc, null),
+            "Observation (vital signs)" to ObservationFhirMapper().toFhirObservation(observation, loinc, null),
+            "Observation (laboratory)" to ObservationFhirMapper().toFhirObservation(labObservation, glucose, null),
             "MedicationStatement" to MedicationStatementFhirMapper().toFhirMedicationStatement(medication, snomed),
             "DocumentReference" to DocumentReferenceFhirMapper().toFhirDocumentReference(note, loinc),
             "DiagnosticReport" to DiagnosticReportFhirMapper().toFhirDiagnosticReport(report, loinc),
@@ -290,13 +298,17 @@ class FhirConformanceValidationTest {
             ),
         )
 
-        // The Patient example must actually claim the US Core profile —
+        // Profiled examples must actually claim their US Core profile —
         // otherwise the loop below would only prove base R4.
-        val patientProfiles = (resources["Patient"] as org.hl7.fhir.r4.model.Patient).meta.profile.map { it.value }
-        assertTrue(
-            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient" in patientProfiles,
-            "Patient must declare the US Core profile it is validated against",
-        )
+        mapOf(
+            "Patient" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient",
+            "Observation (vital signs)" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs",
+            "Observation (laboratory)" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab",
+            "DiagnosticReport" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab",
+        ).forEach { (name, profile) ->
+            val declared = (resources[name] as org.hl7.fhir.r4.model.DomainResource).meta.profile.map { it.value }
+            assertTrue(profile in declared, "$name must declare the US Core profile it is validated against")
+        }
 
         resources.forEach { (name, resource) ->
             val result = validator.validateWithResult(resource)

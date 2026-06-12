@@ -65,6 +65,17 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                 jsonPath("$.rest[0].resource[?(@.type=='Patient')].supportedProfile[0]") {
                     value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient")
                 }
+                jsonPath("$.rest[0].resource[?(@.type=='Observation')].supportedProfile[*]") {
+                    value(
+                        containsInAnyOrder(
+                            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs",
+                            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab",
+                        ),
+                    )
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='DiagnosticReport')].supportedProfile[0]") {
+                    value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab")
+                }
                 jsonPath("$.rest[0].resource[?(@.type=='Condition')].supportedProfile") {
                     value(org.hamcrest.Matchers.empty<Any>())
                 }
