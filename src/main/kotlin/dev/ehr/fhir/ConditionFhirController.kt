@@ -27,6 +27,8 @@ class ConditionFhirController(
     private val conditionService: ConditionService,
     private val conditionFhirMapper: ConditionFhirMapper,
     private val codeableConceptRepository: CodeableConceptRepository,
+    private val provenanceQueryService: dev.ehr.provenance.ProvenanceQueryService,
+    private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
 ) {
     @GetMapping("/Condition/{id}", produces = [FHIR_JSON])
@@ -59,6 +61,7 @@ class ConditionFhirController(
         @RequestParam patient: String?,
         @RequestParam(name = "category") category: String?,
         @RequestParam(name = "clinical-status") clinicalStatus: String?,
+        @RequestParam(name = "_revinclude") revInclude: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -107,6 +110,24 @@ class ConditionFhirController(
                         ),
                 )
             }
+            if (ProvenanceRevInclude.isRequested(revInclude) && conditions.isNotEmpty()) {
+                provenanceQueryService.searchByTargets(
+                    principal,
+                    patientId.value,
+                    "CONDITION",
+                    conditions.map { it.id.value },
+                ).forEach { event ->
+                    bundle.addEntry(
+                        Bundle.BundleEntryComponent()
+                            .setFullUrl(provenanceFullUrl(event.id))
+                            .setResource(provenanceFhirMapper.toFhirProvenance(event))
+                            .setSearch(
+                                Bundle.BundleEntrySearchComponent()
+                                    .setMode(Bundle.SearchEntryMode.INCLUDE),
+                            ),
+                    )
+                }
+            }
             responses.resource(HttpStatus.OK, bundle)
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
@@ -135,5 +156,11 @@ class ConditionFhirController(
         ServletUriComponentsBuilder.fromCurrentContextPath()
             .path("/fhir/r4/Condition/{id}")
             .buildAndExpand(idPart)
+            .toUriString()
+
+    private fun provenanceFullUrl(id: UUID): String =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/fhir/r4/Provenance/{id}")
+            .buildAndExpand(id)
             .toUriString()
 }

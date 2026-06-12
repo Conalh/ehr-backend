@@ -27,6 +27,8 @@ class AllergyFhirController(
     private val allergyService: AllergyService,
     private val allergyFhirMapper: AllergyFhirMapper,
     private val codeableConceptRepository: CodeableConceptRepository,
+    private val provenanceQueryService: dev.ehr.provenance.ProvenanceQueryService,
+    private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
 ) {
     @GetMapping("/AllergyIntolerance/{id}", produces = [FHIR_JSON])
@@ -57,6 +59,7 @@ class AllergyFhirController(
     fun search(
         authentication: Authentication,
         @RequestParam patient: String?,
+        @RequestParam(name = "_revinclude") revInclude: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -88,6 +91,24 @@ class AllergyFhirController(
                         ),
                 )
             }
+            if (ProvenanceRevInclude.isRequested(revInclude) && allergies.isNotEmpty()) {
+                provenanceQueryService.searchByTargets(
+                    principal,
+                    patientId.value,
+                    "ALLERGY",
+                    allergies.map { it.id.value },
+                ).forEach { event ->
+                    bundle.addEntry(
+                        Bundle.BundleEntryComponent()
+                            .setFullUrl(provenanceFullUrl(event.id))
+                            .setResource(provenanceFhirMapper.toFhirProvenance(event))
+                            .setSearch(
+                                Bundle.BundleEntrySearchComponent()
+                                    .setMode(Bundle.SearchEntryMode.INCLUDE),
+                            ),
+                    )
+                }
+            }
             responses.resource(HttpStatus.OK, bundle)
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
@@ -111,6 +132,12 @@ class AllergyFhirController(
 
     private fun parseUuid(value: String): UUID? =
         runCatching { UUID.fromString(value) }.getOrNull()
+
+    private fun provenanceFullUrl(id: UUID): String =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/fhir/r4/Provenance/{id}")
+            .buildAndExpand(id)
+            .toUriString()
 
     private fun allergyFullUrl(idPart: String): String =
         ServletUriComponentsBuilder.fromCurrentContextPath()

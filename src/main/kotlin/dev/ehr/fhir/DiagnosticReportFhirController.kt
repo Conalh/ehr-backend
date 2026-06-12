@@ -27,6 +27,8 @@ class DiagnosticReportFhirController(
     private val diagnosticReportService: DiagnosticReportService,
     private val diagnosticReportFhirMapper: DiagnosticReportFhirMapper,
     private val codeableConceptRepository: CodeableConceptRepository,
+    private val provenanceQueryService: dev.ehr.provenance.ProvenanceQueryService,
+    private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
 ) {
     @GetMapping("/DiagnosticReport/{id}", produces = [FHIR_JSON])
@@ -60,6 +62,7 @@ class DiagnosticReportFhirController(
         @RequestParam(name = "category") category: String?,
         @RequestParam(name = "code") code: String?,
         @RequestParam(name = "date") date: List<String>?,
+        @RequestParam(name = "_revinclude") revInclude: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -103,6 +106,24 @@ class DiagnosticReportFhirController(
                         ),
                 )
             }
+            if (ProvenanceRevInclude.isRequested(revInclude) && reports.isNotEmpty()) {
+                provenanceQueryService.searchByTargets(
+                    principal,
+                    patientId.value,
+                    "DIAGNOSTIC_REPORT",
+                    reports.map { it.id.value },
+                ).forEach { event ->
+                    bundle.addEntry(
+                        Bundle.BundleEntryComponent()
+                            .setFullUrl(provenanceFullUrl(event.id))
+                            .setResource(provenanceFhirMapper.toFhirProvenance(event))
+                            .setSearch(
+                                Bundle.BundleEntrySearchComponent()
+                                    .setMode(Bundle.SearchEntryMode.INCLUDE),
+                            ),
+                    )
+                }
+            }
             responses.resource(HttpStatus.OK, bundle)
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
@@ -126,6 +147,12 @@ class DiagnosticReportFhirController(
 
     private fun parseUuid(value: String): UUID? =
         runCatching { UUID.fromString(value) }.getOrNull()
+
+    private fun provenanceFullUrl(id: UUID): String =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/fhir/r4/Provenance/{id}")
+            .buildAndExpand(id)
+            .toUriString()
 
     private fun reportFullUrl(idPart: String): String =
         ServletUriComponentsBuilder.fromCurrentContextPath()

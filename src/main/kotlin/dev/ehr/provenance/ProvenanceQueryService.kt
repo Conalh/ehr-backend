@@ -99,6 +99,38 @@ class ProvenanceQueryService(
         return events
     }
 
+    /**
+     * Batch lookup backing _revinclude=Provenance:target: one policy
+     * evaluation carrying the compartment patient, one SEARCH audit row —
+     * the included provenance rides the same authorization as the matches
+     * it annotates.
+     */
+    fun searchByTargets(
+        principal: SecurityPrincipal,
+        patientId: UUID,
+        targetResourceType: String,
+        targetResourceIds: List<UUID>,
+    ): List<ProvenanceEvent> {
+        val decision = evaluate(principal, patientId)
+        if (!decision.allowed) {
+            auditEventService.recordDeniedAccess(decision, patientId = patientId)
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
+        }
+
+        val events = provenanceRepository.findByTargets(
+            tenantScope(principal),
+            targetResourceType,
+            targetResourceIds,
+        )
+        auditEventService.recordResourceAccess(
+            decision = decision,
+            operation = AuditOperation.SEARCH,
+            outcome = AuditOutcome.SUCCESS,
+            patientId = patientId,
+        )
+        return events
+    }
+
     fun searchByPatient(
         principal: SecurityPrincipal,
         patientId: UUID,

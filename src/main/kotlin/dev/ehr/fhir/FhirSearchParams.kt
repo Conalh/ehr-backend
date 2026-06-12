@@ -46,6 +46,25 @@ data class FhirTokenParam(
     }
 }
 
+/** The single supported reverse include (US Core / g10's who-did-what). */
+object ProvenanceRevInclude {
+    const val VALUE = "Provenance:target"
+
+    /** null → not requested; the supported value → requested; else 400. */
+    fun isRequested(raw: String?): Boolean {
+        if (raw == null) {
+            return false
+        }
+        if (raw == VALUE) {
+            return true
+        }
+        throw ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "Only _revinclude=Provenance:target is supported",
+        )
+    }
+}
+
 /** Half-open instant range; null bounds are unbounded. */
 data class FhirDateRange(
     val from: Instant?,

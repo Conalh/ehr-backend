@@ -30,6 +30,8 @@ class ObservationFhirController(
     private val observationService: ObservationService,
     private val observationFhirMapper: ObservationFhirMapper,
     private val codeableConceptRepository: CodeableConceptRepository,
+    private val provenanceQueryService: dev.ehr.provenance.ProvenanceQueryService,
+    private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
 ) {
     @GetMapping("/Observation/{id}", produces = [FHIR_JSON])
@@ -60,6 +62,7 @@ class ObservationFhirController(
         @RequestParam category: String?,
         @RequestParam(name = "code") code: String?,
         @RequestParam(name = "date") date: List<String>?,
+        @RequestParam(name = "_revinclude") revInclude: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -105,6 +108,24 @@ class ObservationFhirController(
                         ),
                 )
             }
+            if (ProvenanceRevInclude.isRequested(revInclude) && observations.isNotEmpty()) {
+                provenanceQueryService.searchByTargets(
+                    principal,
+                    patientId.value,
+                    "OBSERVATION",
+                    observations.map { it.id.value },
+                ).forEach { event ->
+                    bundle.addEntry(
+                        Bundle.BundleEntryComponent()
+                            .setFullUrl(provenanceFullUrl(event.id))
+                            .setResource(provenanceFhirMapper.toFhirProvenance(event))
+                            .setSearch(
+                                Bundle.BundleEntrySearchComponent()
+                                    .setMode(Bundle.SearchEntryMode.INCLUDE),
+                            ),
+                    )
+                }
+            }
             responses.resource(HttpStatus.OK, bundle)
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
@@ -144,5 +165,11 @@ class ObservationFhirController(
         ServletUriComponentsBuilder.fromCurrentContextPath()
             .path("/fhir/r4/Observation/{id}")
             .buildAndExpand(idPart)
+            .toUriString()
+
+    private fun provenanceFullUrl(id: UUID): String =
+        ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/fhir/r4/Provenance/{id}")
+            .buildAndExpand(id)
             .toUriString()
 }

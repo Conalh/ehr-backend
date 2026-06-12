@@ -52,6 +52,9 @@ class CapabilityStatementController(
             val resource = CapabilityStatement.CapabilityStatementRestResourceComponent()
             resource.type = supported.type
             supported.profiles.forEach { resource.addSupportedProfile(it) }
+            if (supported.revIncludesProvenance) {
+                resource.addSearchRevInclude("Provenance:target")
+            }
             resource.addInteraction(
                 CapabilityStatement.ResourceInteractionComponent()
                     .setCode(CapabilityStatement.TypeRestfulInteraction.READ),

@@ -1,4 +1,4 @@
-package dev.ehr.fhir
+﻿package dev.ehr.fhir
 
 /**
  * Single source of truth for what the FHIR boundary actually serves.
@@ -25,6 +25,8 @@ object FhirCapabilityRegistry {
         // (US Core alignment design, decision 2). Instances stamp exactly
         // the profile matching their shape, never the whole list.
         val profiles: List<String> = emptyList(),
+        // Supports _revinclude=Provenance:target on the compartment search.
+        val revIncludesProvenance: Boolean = false,
     )
 
     private val patientParam = SupportedSearchParam(
@@ -71,11 +73,13 @@ object FhirCapabilityRegistry {
             profiles = listOf(
                 "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns",
             ),
+            revIncludesProvenance = true,
         ),
         SupportedResource(
             type = "AllergyIntolerance",
             searchParams = listOf(patientParam),
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance"),
+            revIncludesProvenance = true,
         ),
         SupportedResource(
             type = "Observation",
@@ -101,6 +105,7 @@ object FhirCapabilityRegistry {
                 "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs",
                 "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab",
             ),
+            revIncludesProvenance = true,
         ),
         // MedicationStatement stays base R4: US Core dropped the resource.
         SupportedResource("MedicationStatement", listOf(patientParam)),
@@ -128,6 +133,7 @@ object FhirCapabilityRegistry {
                 ),
             ),
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab"),
+            revIncludesProvenance = true,
         ),
         SupportedResource(
             type = "CareTeam",

@@ -85,6 +85,36 @@ class ProvenanceRepository(
             targetResourceId,
         )
 
+    /** Batch lookup for _revinclude=Provenance:target. */
+    fun findByTargets(
+        tenantScope: TenantScope,
+        targetResourceType: String,
+        targetResourceIds: List<UUID>,
+    ): List<ProvenanceEvent> {
+        if (targetResourceIds.isEmpty()) {
+            return emptyList()
+        }
+        return jdbcTemplate.query(
+            { connection ->
+                connection.prepareStatement(
+                    """
+                    select $COLUMNS
+                    from provenance_events
+                    where organization_id = ?
+                      and target_resource_type = ?
+                      and target_resource_id = any (?)
+                    order by recorded_at, id
+                    """.trimIndent(),
+                ).apply {
+                    setObject(1, tenantScope.organizationId.value)
+                    setString(2, targetResourceType)
+                    setArray(3, connection.createArrayOf("uuid", targetResourceIds.toTypedArray()))
+                }
+            },
+            rowMapper,
+        )
+    }
+
     fun findByPatient(
         tenantScope: TenantScope,
         patientId: UUID,

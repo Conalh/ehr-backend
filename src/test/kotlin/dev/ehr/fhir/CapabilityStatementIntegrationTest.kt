@@ -88,6 +88,16 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                 jsonPath("$.rest[0].resource[?(@.type=='Provenance')].supportedProfile[0]") {
                     value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-provenance")
                 }
+                // The provenance revinclude is declared exactly where implemented.
+                jsonPath("$.rest[0].resource[?(@.type=='Condition')].searchRevInclude[0]") {
+                    value("Provenance:target")
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Observation')].searchRevInclude[0]") {
+                    value("Provenance:target")
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Encounter')].searchRevInclude") {
+                    value(org.hamcrest.Matchers.empty<Any>())
+                }
                 // Recorded demotions claim nothing.
                 jsonPath("$.rest[0].resource[?(@.type=='Encounter')].supportedProfile") {
                     value(org.hamcrest.Matchers.empty<Any>())

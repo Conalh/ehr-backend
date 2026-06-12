@@ -29,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import java.time.LocalDate
 import java.util.UUID
 
@@ -212,6 +213,47 @@ class ConditionFhirApiIntegrationTest : PostgresIntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.total") { value(1) }
+        }
+    }
+
+    @Test
+    fun `fhir condition search revincludes provenance for its matches`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/*.read user/*.write")
+        val patient = createPatient(member.organization)
+
+        // API-created so the condition carries a provenance event.
+        val response = mockMvc.post("/api/v1/patients/${patient.id.value}/conditions") {
+            contentType = org.springframework.http.MediaType.APPLICATION_JSON
+            content = """{"codeConceptId":"${codeConcept.id.value}"}"""
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isCreated() }
+        }.andReturn().response.contentAsString
+        val conditionId = Regex("\"id\":\"([0-9a-f-]+)\"").find(response)!!.groupValues[1]
+
+        mockMvc.get("/fhir/r4/Condition") {
+            param("patient", patient.id.value.toString())
+            param("_revinclude", "Provenance:target")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            // total counts matches only; provenance rides as include entries.
+            jsonPath("$.total") { value(1) }
+            jsonPath("$.entry.length()") { value(2) }
+            jsonPath("$.entry[0].search.mode") { value("match") }
+            jsonPath("$.entry[1].search.mode") { value("include") }
+            jsonPath("$.entry[1].resource.resourceType") { value("Provenance") }
+            jsonPath("$.entry[1].resource.target[0].reference") { value("Condition/$conditionId") }
+        }
+
+        // Only Provenance:target is supported.
+        mockMvc.get("/fhir/r4/Condition") {
+            param("patient", patient.id.value.toString())
+            param("_revinclude", "Observation:subject")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.resourceType") { value("OperationOutcome") }
         }
     }
 
