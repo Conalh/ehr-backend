@@ -51,6 +51,7 @@ class CapabilityStatementController(
         FhirCapabilityRegistry.supportedResources.forEach { supported ->
             val resource = CapabilityStatement.CapabilityStatementRestResourceComponent()
             resource.type = supported.type
+            supported.profile?.let { resource.addSupportedProfile(it) }
             resource.addInteraction(
                 CapabilityStatement.ResourceInteractionComponent()
                     .setCode(CapabilityStatement.TypeRestfulInteraction.READ),

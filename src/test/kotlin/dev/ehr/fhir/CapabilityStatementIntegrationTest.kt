@@ -61,6 +61,13 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                     )
                 }
                 jsonPath("$.rest[0].resource[?(@.type=='Patient')].searchParam[0].name") { value("identifier") }
+                // Profiles are declared only where the conformance suite proves them.
+                jsonPath("$.rest[0].resource[?(@.type=='Patient')].supportedProfile[0]") {
+                    value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient")
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Condition')].supportedProfile") {
+                    value(org.hamcrest.Matchers.empty<Any>())
+                }
                 jsonPath("$.rest[0].resource[?(@.type=='Observation')].searchParam[*].name") {
                     value(containsInAnyOrder("patient", "category"))
                 }

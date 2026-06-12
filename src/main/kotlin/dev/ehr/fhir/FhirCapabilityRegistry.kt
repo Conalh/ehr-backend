@@ -20,6 +20,9 @@ object FhirCapabilityRegistry {
     data class SupportedResource(
         val type: String,
         val searchParams: List<SupportedSearchParam>,
+        // Declared only once the conformance suite validates against it
+        // (US Core alignment design, decision 2).
+        val profile: String? = null,
     )
 
     private val patientParam = SupportedSearchParam(
@@ -38,6 +41,7 @@ object FhirCapabilityRegistry {
                     documentation = "Exact identifier match in system|value form.",
                 ),
             ),
+            profile = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient",
         ),
         SupportedResource("Encounter", listOf(patientParam)),
         SupportedResource("Condition", listOf(patientParam)),

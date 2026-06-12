@@ -59,7 +59,7 @@ class PatientFhirMapperTest {
     }
 
     @Test
-    fun `maps all administrative genders and omits gender when absent`() {
+    fun `maps all administrative genders and defaults absent to unknown`() {
         mapOf(
             PatientAdministrativeGender.MALE to Enumerations.AdministrativeGender.MALE,
             PatientAdministrativeGender.FEMALE to Enumerations.AdministrativeGender.FEMALE,
@@ -72,10 +72,11 @@ class PatientFhirMapperTest {
             assertEquals(fhirGender, fhirPatient.gender)
         }
 
+        // US Core requires gender 1..1: an unrecorded gender maps to 'unknown'.
         val withoutGender = mapper.toFhirPatient(
             PatientWithIdentifiers(patient(administrativeGender = null), emptyList()),
         )
-        assertNull(withoutGender.gender)
+        assertEquals(Enumerations.AdministrativeGender.UNKNOWN, withoutGender.gender)
     }
 
     @Test

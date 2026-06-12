@@ -24,6 +24,7 @@ class PatientFhirMapper {
         fhirPatient.id = patient.id.value.toString()
         fhirPatient.meta.versionId = patient.version.toString()
         fhirPatient.meta.lastUpdated = Date.from(patient.updatedAt)
+        fhirPatient.meta.addProfile(US_CORE_PATIENT_PROFILE)
         fhirPatient.active = patient.status == PatientStatus.ACTIVE
         fhirPatient.addName(
             HumanName()
@@ -33,9 +34,8 @@ class PatientFhirMapper {
         patient.birthDate?.let { birthDate ->
             fhirPatient.birthDateElement = DateType(birthDate.toString())
         }
-        patient.administrativeGender?.let { gender ->
-            fhirPatient.gender = toFhirGender(gender)
-        }
+        // US Core requires gender 1..1: an unrecorded gender is honestly 'unknown'.
+        fhirPatient.gender = toFhirGender(patient.administrativeGender ?: PatientAdministrativeGender.UNKNOWN)
         source.identifiers.forEach { identifier ->
             val fhirIdentifier = Identifier()
                 .setSystem(identifier.system)
@@ -54,8 +54,22 @@ class PatientFhirMapper {
             }
             fhirPatient.addIdentifier(fhirIdentifier)
         }
+        // US Core requires identifier 1..*: the logical id is genuinely an
+        // identifier in this system, so it backstops unregistered patients.
+        if (fhirPatient.identifier.isEmpty()) {
+            fhirPatient.addIdentifier(
+                Identifier()
+                    .setSystem(LOGICAL_ID_IDENTIFIER_SYSTEM)
+                    .setValue(patient.id.value.toString()),
+            )
+        }
 
         return fhirPatient
+    }
+
+    companion object {
+        const val US_CORE_PATIENT_PROFILE = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"
+        const val LOGICAL_ID_IDENTIFIER_SYSTEM = "urn:ehr:patient-id"
     }
 
     private fun toFhirGender(gender: PatientAdministrativeGender): Enumerations.AdministrativeGender =

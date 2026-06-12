@@ -290,6 +290,14 @@ class FhirConformanceValidationTest {
             ),
         )
 
+        // The Patient example must actually claim the US Core profile —
+        // otherwise the loop below would only prove base R4.
+        val patientProfiles = (resources["Patient"] as org.hl7.fhir.r4.model.Patient).meta.profile.map { it.value }
+        assertTrue(
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient" in patientProfiles,
+            "Patient must declare the US Core profile it is validated against",
+        )
+
         resources.forEach { (name, resource) ->
             val result = validator.validateWithResult(resource)
             val errors = result.messages.filter {
@@ -297,7 +305,7 @@ class FhirConformanceValidationTest {
             }
             assertTrue(
                 errors.isEmpty(),
-                "$name failed base R4 validation: ${errors.joinToString { "${it.locationString}: ${it.message}" }}",
+                "$name failed validation: ${errors.joinToString { "${it.locationString}: ${it.message}" }}",
             )
         }
     }
@@ -334,11 +342,17 @@ class FhirConformanceValidationTest {
         @BeforeAll
         fun setUpValidator() {
             val context = FhirContext.forR4()
+            // US Core structure definitions: resources that stamp a US Core
+            // meta.profile are validated against it, not just base R4.
+            val usCore = org.hl7.fhir.common.hapi.validation.support.NpmPackageValidationSupport(context)
+            usCore.loadPackageFromClasspath("classpath:fhir-packages/hl7.fhir.us.core-6.1.0.tgz")
             val supportChain = ValidationSupportChain(
+                usCore,
                 DefaultProfileValidationSupport(context),
                 // Supplies BCP-13 mime types, languages, and UCUM that the default profiles reference.
                 org.hl7.fhir.common.hapi.validation.support.CommonCodeSystemsTerminologyService(context),
                 InMemoryTerminologyServerValidationSupport(context),
+                org.hl7.fhir.common.hapi.validation.support.SnapshotGeneratingValidationSupport(context),
             )
             validator = context.newValidator().registerValidatorModule(FhirInstanceValidator(supportChain))
         }
