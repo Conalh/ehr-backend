@@ -1,8 +1,8 @@
 # Inferno g10 Conformance: Run Instructions And Gap Report
 
-Status as of the authorization-server arc (AS1–AS4, June 2026), which
-replaced the Slice 10 baseline. **This product does not claim ONC
-certification or g10 conformance**, and the statuses below are
+Status as of the US Core alignment arc (UC1–UC5, June 2026), which builds
+on the authorization-server arc (AS1–AS4). **This product does not claim
+ONC certification or g10 conformance**, and the statuses below are
 implementation-based expectations — an actual Inferno run against this
 build is the next verification step and may move rows.
 
@@ -36,9 +36,10 @@ Discovery is at `/.well-known/smart-configuration`.
 | OpenID Connect (`openid`/`fhirUser`, id_token) | **Expected pass** | OIDC id_token with `sub`; `fhirUser` emitted when the user has a practitioner identity, referencing the served FHIR `Practitioner` (AS2B). |
 | Token refresh / revocation | **Expected pass (confidential clients)** | Rotating refresh tokens with reuse detection and RFC 7009 revocation (AS2). Public clients receive no refresh tokens — the authorization server's posture; Inferno groups expecting public-client refresh will flag this. |
 | SMART discovery (`.well-known/smart-configuration`) | **Expected pass** | Live endpoints throughout; capabilities list is accurate by test (`launch-standalone`, `context-standalone-patient`, `sso-openid-connect`, `client-public`, `client-confidential-symmetric`, permissions). |
-| Capability metadata (`/fhir/r4/metadata`) | **Expected pass (base checks)** | Public, registry-generated, accurate to the eleven served resources, search advertised only where it exists. US Core `supportedProfile` declarations still absent. |
-| Single Patient API: read + search for the served resources | **Partial** | Read + compartment search served and validated against base R4; searchset bundles carry `self` links. Gaps unchanged: US Core profile conformance unvalidated; only the registry's search parameters exist (no `_id`, `date`, `code`, `status`, `_revinclude=Provenance:target`). |
-| Missing resource types vs US Core (Immunization, Procedure, CarePlan, Device, Goal, Location, Organization read, PractitionerRole) | **Out of scope (roadmap)** | CareTeam and Practitioner were added (H4/AS2B); the rest follow the established vertical pattern. |
+| Capability metadata (`/fhir/r4/metadata`) | **Expected pass** | Public, registry-generated, accurate to the eleven served resources; search, `supportedProfile`, and `searchRevInclude` advertised exactly where implemented (asserted in tests both ways). |
+| Single Patient API: US Core profiles | **Partial — 8 profiles proven** | `us-core-patient`, `us-core-vital-signs`, `us-core-observation-lab`, `us-core-diagnosticreport-lab`, `us-core-condition-problems-health-concerns`, `us-core-allergyintolerance`, `us-core-careteam` (participant-bearing instances), and `us-core-provenance` — each declared in `meta.profile`/`supportedProfile` and validated against the US Core 6.1 package in the conformance suite. **Recorded demotions** (base R4 only, each traced to a validator finding): Encounter (`Encounter.type` not modeled), DocumentReference (the required type binding composes over full LOINC, not validatable offline), Practitioner (no structured family name), MedicationStatement (dropped by US Core). |
+| Single Patient API: searches | **Partial — the SHALL set for claimed profiles** | Patient `_id` + `identifier`; Condition `patient`/`category`/`clinical-status`; Observation `patient`/`category`/`code`/`date`; CareTeam `patient`/`status`; DiagnosticReport `patient`/`category`/`code`/`date`; `_revinclude=Provenance:target` on the four profiled clinical searches. Date prefixes `eq\|ge\|gt\|le\|lt`; combinations AND. Gaps: Patient `name`/`birthdate`/`gender` searches, `_include`, `_lastUpdated`, paging. |
+| Missing resource types vs US Core (Immunization, Procedure, CarePlan, Device, Goal, Location, Organization read, PractitionerRole) | **Out of scope (recorded — scope C of the alignment design)** | CareTeam and Practitioner were added (H4/AS2B); the rest follow the established vertical pattern if an Inferno run makes them decisive. |
 | Multi-Patient (Bulk Data) API | **Partial — system-level** | The FHIR `$export` kickoff/status protocol is live over the async NDJSON engine, authorized by backend-services (client-credentials) tokens (AS1/AS4). Gaps: `Group/[id]/$export` (no Group resource), `_type`/`_since` filters (refused with OperationOutcome), DELETE-cancel. g10's multi-patient group specifically drives Group-level export. |
 | Invalid token / invalid request handling | **Expected pass** | 401 on missing/invalid tokens everywhere; OperationOutcome errors with correct issue codes; OAuth protocol errors from the live endpoints. |
 | US Core profile validation of returned resources | **Out of scope until validated** | Base R4 validation only; claiming profiles before validating against them violates the project's honesty rule (AGENTS.md). |
@@ -48,20 +49,23 @@ Discovery is at `/.well-known/smart-configuration`.
 1. EHR launch (`launch` scope and launch-context resolution).
 2. Refresh tokens for public clients.
 3. `Group/[id]/$export` and `Patient/$export`; `_type`/`_since`; export cancel.
-4. US Core profile conformance and `supportedProfile` declarations.
-5. US Core resource types beyond the eleven served.
-6. `_revinclude`, `_include`, and the wider US Core search parameter set.
+4. US Core profiles for Encounter, DocumentReference, Practitioner, and
+   MedicationStatement (each demoted with a recorded, validator-traced
+   reason — see the matrix).
+5. US Core resource types beyond the eleven served (scope C, not chosen).
+6. Patient `name`/`birthdate`/`gender` searches; `_include`;
+   `_lastUpdated`; paging.
 7. `private_key_jwt` (asymmetric) client authentication for backend services.
 
 Each item traces to a recorded decision in the design docs and slice plans.
-The dominant remaining work program is **US Core profile alignment**; the
-authorization-server prerequisite from the Slice 10 report is done.
 
 ## What this buys us
 
-The Slice 10 report's two work programs were authorization-server
-integration and US Core profile alignment. The first shipped (H1–H5
-compartment hardening, AS1–AS4 token issuance and SMART flows); the gap
-list is now dominated by profile and search-parameter work on the clinical
-model. Next verification step: execute the Inferno kit against this build
-and replace the "expected" qualifiers above with observed results.
+The Slice 10 report's two work programs — authorization-server integration
+and US Core profile alignment — have both shipped (H1–H5 hardening, AS1–AS4
+token issuance and SMART flows, UC1–UC5 profiles and searches). What
+remains is either deliberately out of scope with a written reason, or
+blocked on things a portfolio repo should not fake (licensed LOINC,
+unmodeled clinical fields). Next verification step: execute the Inferno kit
+against this build and replace the "expected" qualifiers above with
+observed results.
