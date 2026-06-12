@@ -257,6 +257,40 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
         }
     }
 
+    @Test
+    fun `fhir patient search by _id returns a singleton or an honest empty bundle`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/Patient.read")
+        val patient = createPatient(member.organization)
+        val otherOrganization = createOrganization()
+        val foreignPatient = createPatient(otherOrganization)
+
+        mockMvc.get("/fhir/r4/Patient") {
+            param("_id", patient.id.value.toString())
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.type") { value("searchset") }
+            jsonPath("$.total") { value(1) }
+            jsonPath("$.entry[0].resource.id") { value(patient.id.value.toString()) }
+        }
+
+        // Cross-tenant and unknown ids are empty bundles, never 404s.
+        mockMvc.get("/fhir/r4/Patient") {
+            param("_id", foreignPatient.id.value.toString())
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+        mockMvc.get("/fhir/r4/Patient") {
+            param("_id", "not-a-uuid")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+    }
+
     private fun createOrganization(): Organization {
         val suffix = UUID.randomUUID()
         return organizationRepository.create(

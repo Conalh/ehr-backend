@@ -9,6 +9,7 @@ object FhirCapabilityRegistry {
     enum class SearchParamType {
         TOKEN,
         REFERENCE,
+        DATE,
     }
 
     data class SupportedSearchParam(
@@ -41,6 +42,11 @@ object FhirCapabilityRegistry {
                     type = SearchParamType.TOKEN,
                     documentation = "Exact identifier match in system|value form.",
                 ),
+                SupportedSearchParam(
+                    name = "_id",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Logical id; a non-match is an empty bundle.",
+                ),
             ),
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"),
         ),
@@ -49,7 +55,19 @@ object FhirCapabilityRegistry {
         SupportedResource("Encounter", listOf(patientParam)),
         SupportedResource(
             type = "Condition",
-            searchParams = listOf(patientParam),
+            searchParams = listOf(
+                patientParam,
+                SupportedSearchParam(
+                    name = "category",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Condition category (every condition is problem-list-item).",
+                ),
+                SupportedSearchParam(
+                    name = "clinical-status",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Condition clinical status code.",
+                ),
+            ),
             profiles = listOf(
                 "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns",
             ),
@@ -68,6 +86,16 @@ object FhirCapabilityRegistry {
                     type = SearchParamType.TOKEN,
                     documentation = "Observation category code (vital-signs or laboratory).",
                 ),
+                SupportedSearchParam(
+                    name = "code",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Observation code as system|code or bare code.",
+                ),
+                SupportedSearchParam(
+                    name = "date",
+                    type = SearchParamType.DATE,
+                    documentation = "Effective time with eq|ge|gt|le|lt prefixes; repeatable for ranges.",
+                ),
             ),
             profiles = listOf(
                 "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs",
@@ -81,12 +109,36 @@ object FhirCapabilityRegistry {
         SupportedResource("DocumentReference", listOf(patientParam)),
         SupportedResource(
             type = "DiagnosticReport",
-            searchParams = listOf(patientParam),
+            searchParams = listOf(
+                patientParam,
+                SupportedSearchParam(
+                    name = "category",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Report category (every report is LAB).",
+                ),
+                SupportedSearchParam(
+                    name = "code",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Report code as system|code or bare code.",
+                ),
+                SupportedSearchParam(
+                    name = "date",
+                    type = SearchParamType.DATE,
+                    documentation = "Issued time with eq|ge|gt|le|lt prefixes; repeatable for ranges.",
+                ),
+            ),
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab"),
         ),
         SupportedResource(
             type = "CareTeam",
-            searchParams = listOf(patientParam),
+            searchParams = listOf(
+                patientParam,
+                SupportedSearchParam(
+                    name = "status",
+                    type = SearchParamType.TOKEN,
+                    documentation = "Care team status (the served team is always active).",
+                ),
+            ),
             // Stamped only on participant-bearing instances (the profile
             // requires participant 1..*; empty teams are valid here).
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam"),

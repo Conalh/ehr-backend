@@ -57,6 +57,8 @@ class ConditionFhirController(
     fun search(
         authentication: Authentication,
         @RequestParam patient: String?,
+        @RequestParam(name = "category") category: String?,
+        @RequestParam(name = "clinical-status") clinicalStatus: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -67,7 +69,24 @@ class ConditionFhirController(
             )
 
         return try {
+            // Every condition in this model is a problem-list item: a
+            // matching category returns everything, any other an honest
+            // empty bundle.
+            val categoryMatches = category?.let(FhirTokenParam::parse)
+                ?.matches(ConditionFhirMapper.US_CORE_CONDITION_CATEGORY_SYSTEM, "problem-list-item")
+                ?: true
+            val statusToken = clinicalStatus?.let(FhirTokenParam::parse)
             val conditions = conditionService.problemList(principal, patientId)
+                .filter { condition ->
+                    categoryMatches &&
+                        (
+                            statusToken == null ||
+                                statusToken.matches(
+                                    dev.ehr.terminology.CanonicalCodeSystems.HL7_CONDITION_CLINICAL,
+                                    condition.clinicalStatus.dbValue,
+                                )
+                            )
+                }
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = conditions.size

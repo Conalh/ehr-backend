@@ -96,7 +96,19 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                     value(org.hamcrest.Matchers.empty<Any>())
                 }
                 jsonPath("$.rest[0].resource[?(@.type=='Observation')].searchParam[*].name") {
-                    value(containsInAnyOrder("patient", "category"))
+                    value(containsInAnyOrder("patient", "category", "code", "date"))
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Patient')].searchParam[*].name") {
+                    value(containsInAnyOrder("identifier", "_id"))
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Condition')].searchParam[*].name") {
+                    value(containsInAnyOrder("patient", "category", "clinical-status"))
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='DiagnosticReport')].searchParam[*].name") {
+                    value(containsInAnyOrder("patient", "category", "code", "date"))
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='CareTeam')].searchParam[*].name") {
+                    value(containsInAnyOrder("patient", "status"))
                 }
                 jsonPath("$.rest[0].resource[?(@.type=='Provenance')].searchParam[*].name") {
                     value(containsInAnyOrder("target", "patient"))

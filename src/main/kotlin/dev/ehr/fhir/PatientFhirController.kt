@@ -49,13 +49,34 @@ class PatientFhirController(
     fun search(
         authentication: Authentication,
         @RequestParam identifier: String?,
+        @RequestParam(name = "_id") id: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
+
+        // _id search: a non-match (unknown id, cross-tenant) is an empty
+        // bundle per FHIR search semantics, never a 404.
+        if (id != null) {
+            return try {
+                val results = parsePatientId(id)
+                    ?.let { patientId ->
+                        try {
+                            listOf(patientService.get(principal, patientId))
+                        } catch (notFound: ResponseStatusException) {
+                            if (notFound.statusCode == HttpStatus.NOT_FOUND) emptyList() else throw notFound
+                        }
+                    }
+                    ?: emptyList()
+                responses.resource(HttpStatus.OK, searchBundle(results))
+            } catch (exception: ResponseStatusException) {
+                responses.fromStatusException(exception)
+            }
+        }
+
         val token = parseIdentifierToken(identifier)
             ?: return responses.operationOutcome(
                 HttpStatus.BAD_REQUEST,
                 OperationOutcome.IssueType.INVALID,
-                "The identifier search parameter is required in system|value form",
+                "The identifier or _id search parameter is required",
             )
 
         return try {
@@ -84,6 +105,30 @@ class PatientFhirController(
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
         }
+    }
+
+    private fun searchBundle(results: List<dev.ehr.patient.PatientWithIdentifiers>): Bundle {
+        val bundle = Bundle()
+        bundle.type = Bundle.BundleType.SEARCHSET
+        bundle.total = results.size
+        bundle.addLink(
+            Bundle.BundleLinkComponent()
+                .setRelation("self")
+                .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
+        )
+        results.forEach { result ->
+            val fhirPatient = patientFhirMapper.toFhirPatient(result)
+            bundle.addEntry(
+                Bundle.BundleEntryComponent()
+                    .setFullUrl(patientFullUrl(fhirPatient.idElement.idPart))
+                    .setResource(fhirPatient)
+                    .setSearch(
+                        Bundle.BundleEntrySearchComponent()
+                            .setMode(Bundle.SearchEntryMode.MATCH),
+                    ),
+            )
+        }
+        return bundle
     }
 
     private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =

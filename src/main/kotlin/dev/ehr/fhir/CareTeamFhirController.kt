@@ -58,6 +58,7 @@ class CareTeamFhirController(
     fun search(
         authentication: Authentication,
         @RequestParam patient: String?,
+        @RequestParam(name = "status") status: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -68,25 +69,34 @@ class CareTeamFhirController(
             )
 
         return try {
+            // The served team is always active: a matching status returns it,
+            // any other an honest empty bundle.
+            val statusMatches = status?.let(FhirTokenParam::parse)
+                ?.matches(null, "active")
+                ?: true
             val memberships = careTeamService.listForPatient(principal, patientId)
-            val team = careTeamFhirMapper.toFhirCareTeam(patientId, memberships, usersFor(memberships))
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
-            bundle.total = 1
             bundle.addLink(
                 Bundle.BundleLinkComponent()
                     .setRelation("self")
                     .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
             )
-            bundle.addEntry(
-                Bundle.BundleEntryComponent()
-                    .setFullUrl(careTeamFullUrl(team.idElement.idPart))
-                    .setResource(team)
-                    .setSearch(
-                        Bundle.BundleEntrySearchComponent()
-                            .setMode(Bundle.SearchEntryMode.MATCH),
-                    ),
-            )
+            if (statusMatches) {
+                val team = careTeamFhirMapper.toFhirCareTeam(patientId, memberships, usersFor(memberships))
+                bundle.total = 1
+                bundle.addEntry(
+                    Bundle.BundleEntryComponent()
+                        .setFullUrl(careTeamFullUrl(team.idElement.idPart))
+                        .setResource(team)
+                        .setSearch(
+                            Bundle.BundleEntrySearchComponent()
+                                .setMode(Bundle.SearchEntryMode.MATCH),
+                        ),
+                )
+            } else {
+                bundle.total = 0
+            }
             responses.resource(HttpStatus.OK, bundle)
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)

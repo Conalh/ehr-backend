@@ -72,6 +72,7 @@ class CapabilityStatementController(
                             when (param.type) {
                                 FhirCapabilityRegistry.SearchParamType.TOKEN -> Enumerations.SearchParamType.TOKEN
                                 FhirCapabilityRegistry.SearchParamType.REFERENCE -> Enumerations.SearchParamType.REFERENCE
+                                FhirCapabilityRegistry.SearchParamType.DATE -> Enumerations.SearchParamType.DATE
                             },
                         )
                         .setDocumentation(param.documentation),

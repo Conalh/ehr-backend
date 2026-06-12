@@ -210,6 +210,31 @@ class CareTeamFhirApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `fhir care team search filters by status`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/CareTeam.read")
+        val patient = createPatient(member.organization)
+
+        // The served team is always active: matching status returns it,
+        // any other an honest empty bundle.
+        mockMvc.get("/fhir/r4/CareTeam") {
+            param("patient", patient.id.value.toString())
+            param("status", "active")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/CareTeam") {
+            param("patient", patient.id.value.toString())
+            param("status", "proposed")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+    }
+
+    @Test
     fun `fhir care team search without usable patient parameter returns operation outcome invalid`() {
         val member = createMember(MembershipRole.CLINICIAN, "user/CareTeam.read")
 

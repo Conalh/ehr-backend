@@ -236,6 +236,65 @@ class ObservationFhirApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `fhir observation search filters by code and date`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/Observation.read")
+        val patient = createPatient(member.organization)
+        createObservation(member.organization, patient)
+
+        // Code: system|code match, bare-code match, and a non-match.
+        mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("code", "http://loinc.org|8867-4")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("code", "8867-4")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("code", "http://loinc.org|0000-0")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+
+        // Date ranges AND together; malformed input is refused.
+        mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("date", "ge2000-01-01")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("date", "lt2000-01-01")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+        mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("date", "not-a-date")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.resourceType") { value("OperationOutcome") }
+        }
+    }
+
+    @Test
     fun `fhir observation search rejects unknown category and missing patient`() {
         val member = createMember(MembershipRole.CLINICIAN, "user/Observation.read")
         val patient = createPatient(member.organization)

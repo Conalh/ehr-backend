@@ -57,6 +57,9 @@ class DiagnosticReportFhirController(
     fun search(
         authentication: Authentication,
         @RequestParam patient: String?,
+        @RequestParam(name = "category") category: String?,
+        @RequestParam(name = "code") code: String?,
+        @RequestParam(name = "date") date: List<String>?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -67,7 +70,19 @@ class DiagnosticReportFhirController(
             )
 
         return try {
+            // Every report in this model is a LAB report: a matching category
+            // returns everything, any other returns an honest empty bundle.
+            val categoryMatches = category?.let(FhirTokenParam::parse)
+                ?.matches(DiagnosticReportFhirMapper.V2_0074_SYSTEM, "LAB")
+                ?: true
+            val codeToken = code?.let(FhirTokenParam::parse)
+            val dateRanges = date.orEmpty().map(FhirDateRange::parse)
             val reports = diagnosticReportService.listForPatient(principal, patientId)
+                .filter { report ->
+                    categoryMatches &&
+                        (codeToken == null || codeToken.matchesConcept(codeConcept(report))) &&
+                        dateRanges.all { it.contains(report.issuedAt) }
+                }
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = reports.size

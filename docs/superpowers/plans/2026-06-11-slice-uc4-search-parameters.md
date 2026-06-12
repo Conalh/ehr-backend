@@ -19,6 +19,15 @@ entry backed by an explicit repository predicate (design decision 4).
 
 **Decided-and-recorded:**
 
+0. **Predicates apply at the FHIR boundary, not in SQL** (amended from the
+   first draft of this plan): every search is already constrained to one
+   authorized patient compartment by the audited service, and the
+   controllers already resolve each resource's coded concept for mapping —
+   so token/date predicates filter that small, scoped list in one place
+   instead of duplicating the terminology join per repository. This is a
+   presentation-boundary filter over an authorized result set, not
+   FHIR-search-as-naive-SQL.
+
 1. **Constant-valued params filter honestly.** Where the model has exactly
    one value (Condition category, CareTeam status, DiagnosticReport
    category), the parameter is real: the matching value returns everything,

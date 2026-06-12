@@ -58,6 +58,8 @@ class ObservationFhirController(
         authentication: Authentication,
         @RequestParam patient: String?,
         @RequestParam category: String?,
+        @RequestParam(name = "code") code: String?,
+        @RequestParam(name = "date") date: List<String>?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         val patientId = parsePatientParam(patient)
@@ -76,7 +78,13 @@ class ObservationFhirController(
         }
 
         return try {
+            val codeToken = code?.let(FhirTokenParam::parse)
+            val dateRanges = date.orEmpty().map(FhirDateRange::parse)
             val observations = observationService.listForPatient(principal, patientId, categoryFilter)
+                .filter { observation ->
+                    (codeToken == null || codeToken.matchesConcept(concept(observation.codeConceptId.value, "observation code"))) &&
+                        dateRanges.all { it.contains(observation.effectiveAt) }
+                }
             val bundle = Bundle()
             bundle.type = Bundle.BundleType.SEARCHSET
             bundle.total = observations.size

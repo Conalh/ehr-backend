@@ -216,6 +216,49 @@ class ConditionFhirApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `fhir condition search filters by category and clinical status`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/Condition.read")
+        val patient = createPatient(member.organization)
+        createCondition(member.organization, patient)
+
+        // Every condition is a problem-list item: matching category returns
+        // all, any other an honest empty bundle.
+        mockMvc.get("/fhir/r4/Condition") {
+            param("patient", patient.id.value.toString())
+            param("category", "problem-list-item")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/Condition") {
+            param("patient", patient.id.value.toString())
+            param("category", "health-concern")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+
+        mockMvc.get("/fhir/r4/Condition") {
+            param("patient", patient.id.value.toString())
+            param("clinical-status", "active")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/Condition") {
+            param("patient", patient.id.value.toString())
+            param("clinical-status", "http://terminology.hl7.org/CodeSystem/condition-clinical|resolved")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+    }
+
+    @Test
     fun `fhir condition search for another organizations patient returns not found`() {
         val correlationId = "fhir-cond-search-cross-${UUID.randomUUID()}"
         val member = createMember(MembershipRole.CLINICIAN, "user/Condition.read")

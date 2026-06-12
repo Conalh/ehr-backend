@@ -156,6 +156,66 @@ class DiagnosticReportFhirApiIntegrationTest : PostgresIntegrationTest() {
         }
     }
 
+    @Test
+    fun `fhir diagnostic report search filters by category code and date`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/DiagnosticReport.read")
+        val fixture = createReport(member.organization)
+        val patientParam = fixture.patient.id.value.toString()
+
+        // Every report is LAB: matching category returns all, any other an
+        // honest empty bundle.
+        mockMvc.get("/fhir/r4/DiagnosticReport") {
+            param("patient", patientParam)
+            param("category", "http://terminology.hl7.org/CodeSystem/v2-0074|LAB")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/DiagnosticReport") {
+            param("patient", patientParam)
+            param("category", "RAD")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+
+        mockMvc.get("/fhir/r4/DiagnosticReport") {
+            param("patient", patientParam)
+            param("code", "http://loinc.org|24323-8")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/DiagnosticReport") {
+            param("patient", patientParam)
+            param("code", "0000-0")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+
+        mockMvc.get("/fhir/r4/DiagnosticReport") {
+            param("patient", patientParam)
+            param("date", "ge2000-01-01")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+        }
+        mockMvc.get("/fhir/r4/DiagnosticReport") {
+            param("patient", patientParam)
+            param("date", "lt2000-01-01")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(0) }
+        }
+    }
+
     private data class ReportFixture(
         val patient: Patient,
         val order: Order,
