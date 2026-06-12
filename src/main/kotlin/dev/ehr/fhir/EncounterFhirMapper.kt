@@ -24,6 +24,8 @@ class EncounterFhirMapper {
         fhirEncounter.id = encounter.id.value.toString()
         fhirEncounter.meta.versionId = encounter.version.toString()
         fhirEncounter.meta.lastUpdated = Date.from(encounter.updatedAt)
+        // us-core-encounter requires Encounter.type (1..*), which this model
+        // does not capture (class only) — base R4, recorded in the gap report.
         fhirEncounter.status = toFhirStatus(encounter.status)
         fhirEncounter.class_ = Coding()
             .setSystem(classConcept.primaryCoding.system)

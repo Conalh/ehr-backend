@@ -27,6 +27,11 @@ class CareTeamFhirMapper {
     ): CareTeam {
         val team = CareTeam()
         team.id = patientId.value.toString()
+        // us-core-careteam requires participant 1..*: a participant-less team
+        // is valid here, so only participant-bearing instances claim it.
+        if (memberships.isNotEmpty()) {
+            team.meta.addProfile(US_CORE_CARETEAM_PROFILE)
+        }
         team.status = CareTeam.CareTeamStatus.ACTIVE
         team.subject = Reference("Patient/${patientId.value}")
 
@@ -59,5 +64,7 @@ class CareTeamFhirMapper {
 
     companion object {
         const val CARE_TEAM_ROLE_SYSTEM = "urn:ehr:care-team-role"
+        const val US_CORE_CARETEAM_PROFILE =
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam"
     }
 }

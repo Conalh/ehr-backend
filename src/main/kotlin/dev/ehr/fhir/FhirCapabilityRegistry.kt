@@ -44,9 +44,21 @@ object FhirCapabilityRegistry {
             ),
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"),
         ),
+        // Encounter stays base R4: us-core-encounter requires Encounter.type,
+        // which this model does not capture (class only).
         SupportedResource("Encounter", listOf(patientParam)),
-        SupportedResource("Condition", listOf(patientParam)),
-        SupportedResource("AllergyIntolerance", listOf(patientParam)),
+        SupportedResource(
+            type = "Condition",
+            searchParams = listOf(patientParam),
+            profiles = listOf(
+                "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns",
+            ),
+        ),
+        SupportedResource(
+            type = "AllergyIntolerance",
+            searchParams = listOf(patientParam),
+            profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance"),
+        ),
         SupportedResource(
             type = "Observation",
             searchParams = listOf(
@@ -62,15 +74,26 @@ object FhirCapabilityRegistry {
                 "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab",
             ),
         ),
+        // MedicationStatement stays base R4: US Core dropped the resource.
         SupportedResource("MedicationStatement", listOf(patientParam)),
+        // DocumentReference stays base R4: the us-core type binding composes
+        // over full LOINC, which cannot ship offline for validation.
         SupportedResource("DocumentReference", listOf(patientParam)),
         SupportedResource(
             type = "DiagnosticReport",
             searchParams = listOf(patientParam),
             profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab"),
         ),
-        SupportedResource("CareTeam", listOf(patientParam)),
+        SupportedResource(
+            type = "CareTeam",
+            searchParams = listOf(patientParam),
+            // Stamped only on participant-bearing instances (the profile
+            // requires participant 1..*; empty teams are valid here).
+            profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam"),
+        ),
         // Read-only: no search params means no search-type interaction.
+        // Practitioner stays base R4: us-core-practitioner requires a
+        // structured family name; practitioners carry display names only.
         SupportedResource("Practitioner", emptyList()),
         SupportedResource(
             type = "Provenance",
@@ -82,6 +105,7 @@ object FhirCapabilityRegistry {
                 ),
                 patientParam,
             ),
+            profiles = listOf("http://hl7.org/fhir/us/core/StructureDefinition/us-core-provenance"),
         ),
     )
 }

@@ -24,6 +24,7 @@ class AllergyFhirMapper {
         fhirAllergy.id = allergy.id.value.toString()
         fhirAllergy.meta.versionId = allergy.version.toString()
         fhirAllergy.meta.lastUpdated = Date.from(allergy.updatedAt)
+        fhirAllergy.meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance")
         fhirAllergy.clinicalStatus = statusConcept(
             system = CanonicalCodeSystems.HL7_ALLERGY_CLINICAL,
             code = allergy.clinicalStatus.dbValue,

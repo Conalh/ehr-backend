@@ -76,7 +76,23 @@ class CapabilityStatementIntegrationTest : PostgresIntegrationTest() {
                 jsonPath("$.rest[0].resource[?(@.type=='DiagnosticReport')].supportedProfile[0]") {
                     value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab")
                 }
-                jsonPath("$.rest[0].resource[?(@.type=='Condition')].supportedProfile") {
+                jsonPath("$.rest[0].resource[?(@.type=='Condition')].supportedProfile[0]") {
+                    value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns")
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='AllergyIntolerance')].supportedProfile[0]") {
+                    value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance")
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='CareTeam')].supportedProfile[0]") {
+                    value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam")
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Provenance')].supportedProfile[0]") {
+                    value("http://hl7.org/fhir/us/core/StructureDefinition/us-core-provenance")
+                }
+                // Recorded demotions claim nothing.
+                jsonPath("$.rest[0].resource[?(@.type=='Encounter')].supportedProfile") {
+                    value(org.hamcrest.Matchers.empty<Any>())
+                }
+                jsonPath("$.rest[0].resource[?(@.type=='Practitioner')].supportedProfile") {
                     value(org.hamcrest.Matchers.empty<Any>())
                 }
                 jsonPath("$.rest[0].resource[?(@.type=='Observation')].searchParam[*].name") {

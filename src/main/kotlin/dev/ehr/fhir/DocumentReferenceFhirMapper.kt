@@ -24,7 +24,19 @@ class DocumentReferenceFhirMapper {
         fhirDocument.id = note.id.value.toString()
         fhirDocument.meta.versionId = note.version.toString()
         fhirDocument.meta.lastUpdated = Date.from(note.updatedAt)
+        // us-core-documentreference is not claimed: its required type binding
+        // composes over full LOINC, which is licensed and cannot ship in the
+        // test IG package, so the claim cannot be validated offline —
+        // recorded in the gap report rather than suppressed.
         fhirDocument.status = toFhirStatus(note.status)
+        // Every note in this model is a clinical note: constant and honest.
+        fhirDocument.addCategory(
+            FhirCodeableConcept().addCoding(
+                Coding()
+                    .setSystem(US_CORE_DOCUMENTREFERENCE_CATEGORY_SYSTEM)
+                    .setCode("clinical-note"),
+            ),
+        )
         fhirDocument.type = toFhirConcept(typeConcept)
         fhirDocument.subject = Reference("Patient/${note.patientId.value}")
         fhirDocument.context.addEncounter(Reference("Encounter/${note.encounterId.value}"))
@@ -61,5 +73,10 @@ class DocumentReferenceFhirMapper {
         }
         concept.text?.let(fhirConcept::setText)
         return fhirConcept
+    }
+
+    companion object {
+        const val US_CORE_DOCUMENTREFERENCE_CATEGORY_SYSTEM =
+            "http://hl7.org/fhir/us/core/CodeSystem/us-core-documentreference-category"
     }
 }

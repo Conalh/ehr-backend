@@ -287,7 +287,12 @@ class FhirConformanceValidationTest {
             "Observation (vital signs)" to ObservationFhirMapper().toFhirObservation(observation, loinc, null),
             "Observation (laboratory)" to ObservationFhirMapper().toFhirObservation(labObservation, glucose, null),
             "MedicationStatement" to MedicationStatementFhirMapper().toFhirMedicationStatement(medication, snomed),
-            "DocumentReference" to DocumentReferenceFhirMapper().toFhirDocumentReference(note, loinc),
+            "DocumentReference" to DocumentReferenceFhirMapper().toFhirDocumentReference(
+                note,
+                // A real note type: the document-type binding is to LOINC
+                // note codes, not whatever observation code is handy.
+                concept("http://loinc.org", "11506-3", "Progress note"),
+            ),
             "DiagnosticReport" to DiagnosticReportFhirMapper().toFhirDiagnosticReport(report, loinc),
             "Provenance" to ProvenanceFhirMapper().toFhirProvenance(provenanceEvent),
             "OperationOutcome" to org.hl7.fhir.r4.model.OperationOutcome().addIssue(
@@ -305,10 +310,20 @@ class FhirConformanceValidationTest {
             "Observation (vital signs)" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-vital-signs",
             "Observation (laboratory)" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-observation-lab",
             "DiagnosticReport" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-diagnosticreport-lab",
+            "Condition" to
+                "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns",
+            "AllergyIntolerance" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-allergyintolerance",
+            "CareTeam" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-careteam",
+            "Provenance" to "http://hl7.org/fhir/us/core/StructureDefinition/us-core-provenance",
         ).forEach { (name, profile) ->
             val declared = (resources[name] as org.hl7.fhir.r4.model.DomainResource).meta.profile.map { it.value }
             assertTrue(profile in declared, "$name must declare the US Core profile it is validated against")
         }
+
+        // The conditional CareTeam stamp: a participant-less team must not
+        // claim a profile that requires participants.
+        val emptyTeam = CareTeamFhirMapper().toFhirCareTeam(patientId, emptyList(), emptyMap())
+        assertTrue(emptyTeam.meta.profile.isEmpty(), "an empty care team must not claim us-core-careteam")
 
         resources.forEach { (name, resource) ->
             val result = validator.validateWithResult(resource)

@@ -25,6 +25,15 @@ class ConditionFhirMapper {
         fhirCondition.id = condition.id.value.toString()
         fhirCondition.meta.versionId = condition.version.toString()
         fhirCondition.meta.lastUpdated = Date.from(condition.updatedAt)
+        fhirCondition.meta.addProfile(US_CORE_CONDITION_PROFILE)
+        // This model's conditions are the problem list: constant and honest.
+        fhirCondition.addCategory(
+            FhirCodeableConcept().addCoding(
+                Coding()
+                    .setSystem(US_CORE_CONDITION_CATEGORY_SYSTEM)
+                    .setCode("problem-list-item"),
+            ),
+        )
         fhirCondition.clinicalStatus = statusConcept(
             system = CanonicalCodeSystems.HL7_CONDITION_CLINICAL,
             code = condition.clinicalStatus.dbValue,
@@ -70,4 +79,13 @@ class ConditionFhirMapper {
 
     private fun dayDateTime(date: LocalDate): DateTimeType =
         DateTimeType(date.toString())
+
+    companion object {
+        const val US_CORE_CONDITION_PROFILE =
+            "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns"
+        // problem-list-item is from the core HL7 terminology, not US Core's
+        // own condition-category code system (which adds health-concern).
+        const val US_CORE_CONDITION_CATEGORY_SYSTEM =
+            "http://terminology.hl7.org/CodeSystem/condition-category"
+    }
 }

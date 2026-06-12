@@ -17,6 +17,7 @@ class ProvenanceFhirMapper {
         val fhirProvenance = Provenance()
 
         fhirProvenance.id = event.id.toString()
+        fhirProvenance.meta.addProfile("http://hl7.org/fhir/us/core/StructureDefinition/us-core-provenance")
         fhirProvenance.addTarget(
             Reference("${fhirTypeFor(event.targetResourceType)}/${event.targetResourceId}"),
         )
