@@ -1,10 +1,14 @@
 package dev.ehr.authz
 
 import dev.ehr.identity.TenantScope
+import dev.ehr.identity.UserId
 import dev.ehr.identity.UserRepository
 import dev.ehr.identity.MembershipRepository
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.security.AuditEventService
+import dev.ehr.security.AuditOperation
+import dev.ehr.security.AuditOutcome
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -67,6 +71,7 @@ class PatientLaunchController(
     private val userRepository: UserRepository,
     private val membershipRepository: MembershipRepository,
     private val patientRepository: PatientRepository,
+    private val auditEventService: AuditEventService,
 ) {
     @GetMapping("/launch/patient-picker", produces = [MediaType.TEXT_HTML_VALUE])
     @org.springframework.web.bind.annotation.ResponseBody
@@ -74,8 +79,15 @@ class PatientLaunchController(
         authentication: Authentication,
         request: HttpServletRequest,
     ): String {
-        val scope = tenantScopeFor(authentication)
+        val (scope, userId) = resolve(authentication)
         val patients = patientRepository.findRecentByOrganization(scope)
+        auditEventService.recordBackgroundEvent(
+            organizationId = scope.organizationId,
+            subjectUserId = userId,
+            resourceType = "PATIENT",
+            operation = AuditOperation.SEARCH,
+            outcome = AuditOutcome.SUCCESS,
+        )
         val csrf = request.getAttribute(CsrfToken::class.java.name) as? CsrfToken
         val options = patients.joinToString("\n") { patient ->
             val label = HtmlUtils.htmlEscape("${patient.familyName}, ${patient.givenName} (${patient.id.value})")
@@ -104,10 +116,18 @@ class PatientLaunchController(
         request: HttpServletRequest,
         @RequestParam patientId: UUID,
     ): String {
-        val scope = tenantScopeFor(authentication)
+        val (scope, userId) = resolve(authentication)
         patientRepository.findById(scope, PatientId(patientId))
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Patient is not in your organization")
 
+        auditEventService.recordBackgroundEvent(
+            organizationId = scope.organizationId,
+            subjectUserId = userId,
+            resourceType = "PATIENT",
+            operation = AuditOperation.READ,
+            outcome = AuditOutcome.SUCCESS,
+            resourceId = patientId,
+        )
         request.session.setAttribute(PatientLaunchSession.SELECTED_PATIENT, patientId)
         val resume = (request.session.getAttribute(PatientLaunchSession.RESUME_AUTHORIZE) as? String)
             ?.takeIf { it.startsWith("/oauth/authorize?") }
@@ -115,14 +135,21 @@ class PatientLaunchController(
         return "redirect:$resume"
     }
 
-    private fun tenantScopeFor(authentication: Authentication): TenantScope {
+    private fun resolve(authentication: Authentication): Pair<TenantScope, UserId?> {
         val user = userRepository.findByExternalSubject(authentication.name)
             ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Unknown user")
-        val membership = membershipRepository.findActiveByUser(user.id).singleOrNull()
-            ?: throw ResponseStatusException(
+        val memberships = membershipRepository.findActiveByUser(user.id)
+        val membership = when {
+            memberships.isEmpty() -> throw ResponseStatusException(
                 HttpStatus.FORBIDDEN,
-                "Patient launch requires exactly one active organization membership",
+                "Patient launch requires an active organization membership",
             )
-        return TenantScope(membership.organizationId)
+            memberships.size > 1 -> throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Patient launch requires exactly one active organization membership; user has ${memberships.size}",
+            )
+            else -> memberships.first()
+        }
+        return TenantScope(membership.organizationId) to user.id
     }
 }

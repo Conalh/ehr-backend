@@ -85,4 +85,14 @@ class RateLimitFilterTest {
         nowMillis += 60_001
         assertEquals(200, run(filter, "/api/v1/patients").status)
     }
+
+    @Test
+    fun `oauth token and login paths are rate limited`() {
+        val filter = filter(limit = 1)
+
+        assertEquals(200, run(filter, "/oauth/token", "10.0.0.10").status)
+        assertEquals(429, run(filter, "/oauth/token", "10.0.0.10").status)
+        assertEquals(200, run(filter, "/login", "10.0.0.11").status)
+        assertEquals(429, run(filter, "/login", "10.0.0.11").status)
+    }
 }

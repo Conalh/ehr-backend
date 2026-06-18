@@ -2,6 +2,7 @@ package dev.ehr.security
 
 import dev.ehr.identity.MembershipId
 import dev.ehr.identity.MembershipRole
+import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.UserId
 import java.util.UUID
@@ -74,6 +75,7 @@ data class PolicyEvaluationRequest(
 data class PolicyDecision(
     val allowed: Boolean,
     val subjectUserId: UserId?,
+    val clientId: OAuthClientId?,
     val organizationId: OrganizationId,
     val membershipId: MembershipId,
     val resourceType: PolicyResourceType,

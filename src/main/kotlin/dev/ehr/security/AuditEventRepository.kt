@@ -32,7 +32,7 @@ class AuditEventRepository(
               correlation_id,
               metadata
             )
-            values (?, ?, null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
             returning
               id,
               occurred_at,
@@ -54,6 +54,7 @@ class AuditEventRepository(
             rowMapper,
             command.organizationId?.value,
             command.subjectUserId?.value,
+            command.clientId?.value,
             command.patientId,
             command.resourceType,
             command.resourceId,

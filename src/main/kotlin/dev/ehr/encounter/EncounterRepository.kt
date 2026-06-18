@@ -127,7 +127,7 @@ class EncounterRepository(
             tenantScope.organizationId.value,
             encounterId.value,
             current.status.dbValue,
-            command.expectedVersion ?: current.version,
+            command.expectedVersion,
         ).singleOrNull()
             ?: throw StaleEncounterTransitionException(
                 "encounter was modified concurrently; transition not applied",

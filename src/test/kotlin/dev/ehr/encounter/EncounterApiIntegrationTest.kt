@@ -361,7 +361,7 @@ class EncounterApiIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.post("/api/v1/encounters/${encounter.id.value}/status") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"targetStatus":"FINISHED","periodEnd":"2026-06-01T11:00:00Z"}"""
+            content = """{"targetStatus":"FINISHED","periodEnd":"2026-06-01T11:00:00Z","expectedVersion":1}"""
             header("Authorization", "Bearer ${member.token}")
             header("X-Correlation-Id", correlationId)
         }.andExpect {
@@ -386,7 +386,7 @@ class EncounterApiIntegrationTest : PostgresIntegrationTest() {
         encounterRepository.transition(
             TenantScope(member.organization.id),
             encounter.id,
-            EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS),
+            EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS, expectedVersion = 1),
         )
 
         mockMvc.post("/api/v1/encounters/${encounter.id.value}/status") {
@@ -410,7 +410,7 @@ class EncounterApiIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.post("/api/v1/encounters/${UUID.randomUUID()}/status") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"targetStatus":"IN_PROGRESS"}"""
+            content = """{"targetStatus":"IN_PROGRESS","expectedVersion":1}"""
             header("Authorization", "Bearer ${member.token}")
             header("X-Correlation-Id", correlationId)
         }.andExpect {
@@ -431,7 +431,7 @@ class EncounterApiIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.post("/api/v1/encounters/${encounter.id.value}/status") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"targetStatus":"IN_PROGRESS"}"""
+            content = """{"targetStatus":"IN_PROGRESS","expectedVersion":1}"""
             header("Authorization", "Bearer ${member.token}")
             header("X-Correlation-Id", correlationId)
         }.andExpect {

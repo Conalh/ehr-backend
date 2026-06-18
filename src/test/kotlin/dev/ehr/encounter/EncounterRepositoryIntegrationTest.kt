@@ -181,7 +181,7 @@ class EncounterRepositoryIntegrationTest : PostgresIntegrationTest() {
         val inProgress = encounterRepository.transition(
             tenantScope,
             created.id,
-            EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS, updatedBy = fixture.user.id),
+            EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS, updatedBy = fixture.user.id, expectedVersion = 1),
         )!!
         assertEquals(EncounterStatus.IN_PROGRESS, inProgress.status)
         assertEquals(2, inProgress.version)
@@ -191,7 +191,7 @@ class EncounterRepositoryIntegrationTest : PostgresIntegrationTest() {
         val finished = encounterRepository.transition(
             tenantScope,
             created.id,
-            EncounterTransitionCommand(targetStatus = EncounterStatus.FINISHED, periodEnd = end),
+            EncounterTransitionCommand(targetStatus = EncounterStatus.FINISHED, periodEnd = end, expectedVersion = 2),
         )!!
         assertEquals(EncounterStatus.FINISHED, finished.status)
         assertEquals(end, finished.periodEnd)
@@ -217,7 +217,7 @@ class EncounterRepositoryIntegrationTest : PostgresIntegrationTest() {
             encounterRepository.transition(
                 tenantScope,
                 created.id,
-                EncounterTransitionCommand(targetStatus = EncounterStatus.FINISHED),
+                EncounterTransitionCommand(targetStatus = EncounterStatus.FINISHED, expectedVersion = 1),
             )
         }
     }
@@ -241,7 +241,7 @@ class EncounterRepositoryIntegrationTest : PostgresIntegrationTest() {
             encounterRepository.transition(
                 tenantScope,
                 planned.id,
-                EncounterTransitionCommand(targetStatus = EncounterStatus.FINISHED, periodEnd = start.plusSeconds(60)),
+                EncounterTransitionCommand(targetStatus = EncounterStatus.FINISHED, periodEnd = start.plusSeconds(60), expectedVersion = 1),
             )
         }
 
@@ -249,14 +249,14 @@ class EncounterRepositoryIntegrationTest : PostgresIntegrationTest() {
         val voided = encounterRepository.transition(
             tenantScope,
             planned.id,
-            EncounterTransitionCommand(targetStatus = EncounterStatus.ENTERED_IN_ERROR),
+            EncounterTransitionCommand(targetStatus = EncounterStatus.ENTERED_IN_ERROR, expectedVersion = 1),
         )!!
         assertEquals(EncounterStatus.ENTERED_IN_ERROR, voided.status)
         assertFailsWith<IllegalArgumentException> {
             encounterRepository.transition(
                 tenantScope,
                 planned.id,
-                EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS),
+                EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS, expectedVersion = 2),
             )
         }
     }
@@ -314,7 +314,7 @@ class EncounterRepositoryIntegrationTest : PostgresIntegrationTest() {
         val result = encounterRepository.transition(
             TenantScope(two.south.id),
             northEncounter.id,
-            EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS),
+            EncounterTransitionCommand(targetStatus = EncounterStatus.IN_PROGRESS, expectedVersion = 1),
         )
         assertNull(result)
 

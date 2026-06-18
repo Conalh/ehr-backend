@@ -209,6 +209,7 @@ class PolicyEvaluator(
         PolicyDecision(
             allowed = allowed,
             subjectUserId = principal.subject.userId,
+            clientId = principal.subject.clientId,
             organizationId = request.organizationId,
             membershipId = principal.membership.membershipId,
             resourceType = request.resourceType,

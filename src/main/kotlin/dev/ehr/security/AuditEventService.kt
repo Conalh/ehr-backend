@@ -20,6 +20,7 @@ class AuditEventService(
             AuditEventCommand(
                 organizationId = decision.organizationId,
                 subjectUserId = decision.subjectUserId,
+                clientId = decision.clientId,
                 resourceType = decision.resourceType.name,
                 operation = if (decision.allowed) AuditOperation.READ else AuditOperation.AUTHORIZATION_DENIED,
                 outcome = if (decision.allowed) AuditOutcome.SUCCESS else AuditOutcome.DENIED,
@@ -44,6 +45,7 @@ class AuditEventService(
             AuditEventCommand(
                 organizationId = decision.organizationId,
                 subjectUserId = decision.subjectUserId,
+                clientId = decision.clientId,
                 patientId = patientId,
                 resourceType = decision.resourceType.name,
                 resourceId = resourceId,

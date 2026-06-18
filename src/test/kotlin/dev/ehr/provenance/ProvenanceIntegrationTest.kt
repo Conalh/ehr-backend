@@ -182,7 +182,7 @@ class ProvenanceIntegrationTest : PostgresIntegrationTest() {
 
         mockMvc.post("/api/v1/encounters/$encounterId/status") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"targetStatus":"IN_PROGRESS"}"""
+            content = """{"targetStatus":"IN_PROGRESS","expectedVersion":1}"""
             header("Authorization", "Bearer ${member.token}")
         }.andExpect {
             status { isOk() }
@@ -221,7 +221,7 @@ class ProvenanceIntegrationTest : PostgresIntegrationTest() {
         // planned -> finished is invalid
         mockMvc.post("/api/v1/encounters/$encounterId/status") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"targetStatus":"FINISHED","periodEnd":"2026-06-01T11:00:00Z"}"""
+            content = """{"targetStatus":"FINISHED","periodEnd":"2026-06-01T11:00:00Z","expectedVersion":2}"""
             header("Authorization", "Bearer ${member.token}")
         }.andExpect {
             status { isUnprocessableEntity() }

@@ -25,6 +25,7 @@ enum class AuditOutcome(val dbValue: String) {
 data class AuditEventCommand(
     val organizationId: OrganizationId?,
     val subjectUserId: UserId?,
+    val clientId: OAuthClientId? = null,
     val patientId: UUID? = null,
     val resourceType: String,
     val resourceId: UUID? = null,

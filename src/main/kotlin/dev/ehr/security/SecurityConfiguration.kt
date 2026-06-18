@@ -7,8 +7,11 @@ import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OrganizationRepository
 import dev.ehr.identity.UserRepository
+import dev.ehr.runtime.CorrelationIdFilter
 import dev.ehr.runtime.EhrProperties
 import dev.ehr.runtime.RateLimitFilter
+import org.springframework.boot.autoconfigure.security.SecurityProperties
+import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -74,9 +77,21 @@ class SecurityConfiguration {
             }
             .build()
 
+    // Edge filters: registered before the security chain so correlation IDs
+    // are set and unauthenticated floods are 429'd before authentication runs.
     @Bean
-    fun rateLimitFilter(properties: EhrProperties): RateLimitFilter =
-        RateLimitFilter(properties)
+    fun correlationIdFilterRegistration(): FilterRegistrationBean<CorrelationIdFilter> =
+        FilterRegistrationBean<CorrelationIdFilter>().apply {
+            filter = CorrelationIdFilter()
+            order = SecurityProperties.DEFAULT_FILTER_ORDER - 2
+        }
+
+    @Bean
+    fun rateLimitFilter(properties: EhrProperties): FilterRegistrationBean<RateLimitFilter> =
+        FilterRegistrationBean<RateLimitFilter>().apply {
+            filter = RateLimitFilter(properties)
+            order = SecurityProperties.DEFAULT_FILTER_ORDER - 1
+        }
 
     // Registered here rather than as @Component so MVC test slices stay
     // unaffected (the RateLimitFilter lesson). Runs after the security filter

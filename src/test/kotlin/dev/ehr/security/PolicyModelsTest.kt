@@ -2,6 +2,7 @@ package dev.ehr.security
 
 import dev.ehr.identity.MembershipId
 import dev.ehr.identity.MembershipRole
+import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.UserId
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -21,6 +22,7 @@ class PolicyModelsTest {
         val decision = PolicyDecision(
             allowed = true,
             subjectUserId = userId,
+            clientId = OAuthClientId(UUID.randomUUID()),
             organizationId = organizationId,
             membershipId = membershipId,
             resourceType = PolicyResourceType.ORGANIZATION,
@@ -52,6 +54,7 @@ class PolicyModelsTest {
         val decision = PolicyDecision(
             allowed = false,
             subjectUserId = null,
+            clientId = null,
             organizationId = OrganizationId(UUID.randomUUID()),
             membershipId = MembershipId(UUID.randomUUID()),
             resourceType = PolicyResourceType.SYSTEM,

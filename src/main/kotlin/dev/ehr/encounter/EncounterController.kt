@@ -81,7 +81,7 @@ class EncounterController(
                 targetStatus = request.targetStatus!!,
                 periodEnd = request.periodEnd,
                 updatedBy = principal.subject.userId,
-                expectedVersion = request.expectedVersion,
+                expectedVersion = request.expectedVersion!!,
             ),
         ).toResponse()
     }
@@ -103,7 +103,8 @@ data class TransitionEncounterRequest(
     @field:NotNull
     val targetStatus: EncounterStatus?,
     val periodEnd: Instant? = null,
-    val expectedVersion: Int? = null,
+    @field:NotNull
+    val expectedVersion: Int?,
 )
 
 data class EncounterResponse(

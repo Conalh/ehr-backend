@@ -28,7 +28,9 @@ class RateLimitFilter(
         filterChain: FilterChain,
     ) {
         val path = request.requestURI
-        if (!path.startsWith("/api/") && !path.startsWith("/fhir/")) {
+        if (!path.startsWith("/api/") && !path.startsWith("/fhir/") &&
+            path != "/oauth/token" && path != "/login"
+        ) {
             filterChain.doFilter(request, response)
             return
         }

@@ -34,6 +34,6 @@ data class EncounterTransitionCommand(
     val targetStatus: EncounterStatus,
     val periodEnd: Instant? = null,
     val updatedBy: UserId? = null,
-    // Caller-observed version for optimistic concurrency; null falls back to the current row version.
-    val expectedVersion: Int? = null,
+    // Caller-observed version for optimistic concurrency; required by the API layer.
+    val expectedVersion: Int,
 )

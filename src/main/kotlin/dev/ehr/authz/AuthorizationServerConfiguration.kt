@@ -265,10 +265,16 @@ class AuthorizationServerConfiguration {
                     val externalSubject = context.getPrincipal<Authentication>().name
                     val user = userRepository.findByExternalSubject(externalSubject)
                         ?: invalidRequest("Token subject is not a known user")
-                    val membership = membershipRepository.findActiveByUser(user.id).singleOrNull()
-                        ?: invalidRequest(
-                            "AS-issued user tokens require exactly one active organization membership",
+                    val memberships = membershipRepository.findActiveByUser(user.id)
+                    val membership = when {
+                        memberships.isEmpty() -> invalidRequest(
+                            "AS-issued user tokens require an active organization membership",
                         )
+                        memberships.size > 1 -> invalidRequest(
+                            "AS-issued user tokens require exactly one active organization membership; user has ${memberships.size}",
+                        )
+                        else -> memberships.first()
+                    }
                     context.claims.claim(
                         JwtClaimNames.ORGANIZATION_ID,
                         membership.organizationId.value.toString(),
