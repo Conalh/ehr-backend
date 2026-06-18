@@ -7,6 +7,7 @@ import dev.ehr.observation.ObservationService
 import dev.ehr.observation.ObservationValue
 import dev.ehr.patient.PatientId
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.terminology.CanonicalCodeSystems
 import dev.ehr.terminology.CodeableConcept
 import dev.ehr.terminology.CodeableConceptId
 import dev.ehr.terminology.CodeableConceptRepository
@@ -72,7 +73,10 @@ class ObservationFhirController(
                 "The patient search parameter is required as a logical id or Patient/{id} reference",
             )
         val categoryFilter = category?.let { raw ->
-            runCatching { ObservationCategory.fromDb(raw) }.getOrNull()
+            val token = FhirTokenParam.parse(raw)
+            ObservationCategory.entries.firstOrNull {
+                token.matches(CanonicalCodeSystems.HL7_OBSERVATION_CATEGORY, it.dbValue)
+            }
                 ?: return responses.operationOutcome(
                     HttpStatus.BAD_REQUEST,
                     OperationOutcome.IssueType.INVALID,

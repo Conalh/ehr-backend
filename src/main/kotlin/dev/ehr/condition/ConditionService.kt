@@ -46,8 +46,12 @@ class ConditionService(
         }
 
         val scope = tenantScope(principal)
-        if (command.encounterId != null && encounterRepository.findById(scope, command.encounterId) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
+        if (command.encounterId != null) {
+            val encounter = encounterRepository.findById(scope, command.encounterId)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
+            if (encounter.patientId != command.patientId) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Encounter does not belong to patient")
+            }
         }
 
         try {

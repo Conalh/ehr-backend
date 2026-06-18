@@ -223,6 +223,16 @@ class ObservationFhirApiIntegrationTest : PostgresIntegrationTest() {
         }
 
         mockMvc.get("/fhir/r4/Observation") {
+            param("patient", patient.id.value.toString())
+            param("category", "${CanonicalCodeSystems.HL7_OBSERVATION_CATEGORY}|vital-signs")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.total") { value(1) }
+            jsonPath("$.entry[0].resource.id") { value(vitalSign.id.value.toString()) }
+        }
+
+        mockMvc.get("/fhir/r4/Observation") {
             param("patient", "Patient/${patient.id.value}")
             header("Authorization", "Bearer ${member.token}")
         }.andExpect {

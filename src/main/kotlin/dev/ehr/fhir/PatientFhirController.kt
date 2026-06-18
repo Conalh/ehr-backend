@@ -53,11 +53,11 @@ class PatientFhirController(
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
 
-        // _id search: a non-match (unknown id, cross-tenant) is an empty
-        // bundle per FHIR search semantics, never a 404.
-        if (id != null) {
-            return try {
-                val results = parsePatientId(id)
+        return try {
+            val idResults = if (id != null) {
+                // _id search: a non-match (unknown id, cross-tenant) is an
+                // empty bundle per FHIR search semantics, never a 404.
+                parsePatientId(id)
                     ?.let { patientId ->
                         try {
                             listOf(patientService.get(principal, patientId))
@@ -66,42 +66,39 @@ class PatientFhirController(
                         }
                     }
                     ?: emptyList()
-                responses.resource(HttpStatus.OK, searchBundle(results))
-            } catch (exception: ResponseStatusException) {
-                responses.fromStatusException(exception)
+            } else {
+                null
             }
-        }
 
-        val token = parseIdentifierToken(identifier)
-            ?: return responses.operationOutcome(
-                HttpStatus.BAD_REQUEST,
-                OperationOutcome.IssueType.INVALID,
-                "The identifier or _id search parameter is required",
-            )
+            val identifierResults = if (identifier != null) {
+                val token = parseIdentifierToken(identifier)
+                    ?: return responses.operationOutcome(
+                        HttpStatus.BAD_REQUEST,
+                        OperationOutcome.IssueType.INVALID,
+                        "The identifier search parameter must be in system|value form",
+                    )
+                patientService.searchByIdentifier(principal, token.first, token.second)
+            } else {
+                null
+            }
 
-        return try {
-            val results = patientService.searchByIdentifier(principal, token.first, token.second)
-            val bundle = Bundle()
-            bundle.type = Bundle.BundleType.SEARCHSET
-            bundle.total = results.size
-            bundle.addLink(
-                Bundle.BundleLinkComponent()
-                    .setRelation("self")
-                    .setUrl(ServletUriComponentsBuilder.fromCurrentRequest().build().toUriString()),
-            )
-            results.forEach { result ->
-                val fhirPatient = patientFhirMapper.toFhirPatient(result)
-                bundle.addEntry(
-                    Bundle.BundleEntryComponent()
-                        .setFullUrl(patientFullUrl(fhirPatient.idElement.idPart))
-                        .setResource(fhirPatient)
-                        .setSearch(
-                            Bundle.BundleEntrySearchComponent()
-                                .setMode(Bundle.SearchEntryMode.MATCH),
-                        ),
+            if (idResults == null && identifierResults == null) {
+                return responses.operationOutcome(
+                    HttpStatus.BAD_REQUEST,
+                    OperationOutcome.IssueType.INVALID,
+                    "The identifier or _id search parameter is required",
                 )
             }
-            responses.resource(HttpStatus.OK, bundle)
+
+            val results = when {
+                idResults != null && identifierResults != null -> {
+                    val identifierIds = identifierResults.map { it.patient.id }.toSet()
+                    idResults.filter { it.patient.id in identifierIds }
+                }
+                idResults != null -> idResults
+                else -> identifierResults.orEmpty()
+            }
+            responses.resource(HttpStatus.OK, searchBundle(results))
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
         }

@@ -291,6 +291,47 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
         }
     }
 
+    @Test
+    fun `fhir patient search combines id and identifier with and semantics`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/Patient.read")
+        val patientA = createPatient(member.organization)
+        val patientB = createPatient(member.organization)
+        val identifierSystem = "urn:ehr:mrn:${UUID.randomUUID()}"
+        patientRepository.addIdentifier(
+            TenantScope(member.organization.id),
+            patientA.id,
+            PatientIdentifierCreateCommand(system = identifierSystem, value = "MRN-A"),
+        )
+        patientRepository.addIdentifier(
+            TenantScope(member.organization.id),
+            patientB.id,
+            PatientIdentifierCreateCommand(system = identifierSystem, value = "MRN-B"),
+        )
+
+        mockMvc.get("/fhir/r4/Patient") {
+            param("_id", patientA.id.value.toString())
+            param("identifier", "$identifierSystem|MRN-A")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.resourceType") { value("Bundle") }
+            jsonPath("$.type") { value("searchset") }
+            jsonPath("$.total") { value(1) }
+            jsonPath("$.entry[0].resource.id") { value(patientA.id.value.toString()) }
+        }
+
+        mockMvc.get("/fhir/r4/Patient") {
+            param("_id", patientA.id.value.toString())
+            param("identifier", "$identifierSystem|MRN-B")
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.resourceType") { value("Bundle") }
+            jsonPath("$.type") { value("searchset") }
+            jsonPath("$.total") { value(0) }
+        }
+    }
+
     private fun createOrganization(): Organization {
         val suffix = UUID.randomUUID()
         return organizationRepository.create(

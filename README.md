@@ -4,7 +4,7 @@
 ![Postgres](https://img.shields.io/badge/Postgres-16-4169E1?logo=postgresql&logoColor=white)
 ![FHIR](https://img.shields.io/badge/FHIR-R4-E84E3C)
 ![SMART](https://img.shields.io/badge/SMART_on_FHIR-launch_·_PKCE_·_OIDC-E84E3C)
-![tests](https://img.shields.io/badge/tests-387_passing-9ece6a)
+[![CI](https://github.com/Conalh/ehr-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/Conalh/ehr-backend/actions/workflows/ci.yml)
 [![synthetic only](https://img.shields.io/badge/data-synthetic_only-9ece6a)](#what-this-is-not)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -101,7 +101,7 @@ Patient demographics and encounter scheduling stay org-wide by design (registrat
 ## Tests
 
 ```powershell
-.\gradlew.bat test    # 387 tests; Testcontainers needs Docker
+.\gradlew.bat test    # 380 tests; Testcontainers needs Docker
 ```
 
 The suite is integration-first: real Postgres via Testcontainers, MockMvc against the full security filter chain, audit rows asserted by correlation id, FHIR responses validated against the R4 core spec, and adversarial cases throughout — cross-tenant probes, stale-version conflicts, double state transitions, denied-access audit trails, break-glass without a reason, wrong PKCE verifiers, refresh-token reuse, and a patient-launched token probing another patient's chart. The OAuth flows are tested as full dances: login → picker → authorize → exchange → use → rotate → revoke.

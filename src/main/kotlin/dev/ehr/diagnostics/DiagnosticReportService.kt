@@ -68,8 +68,12 @@ class DiagnosticReportService(
                 "Results can only be attached to active orders",
             )
         }
-        if (encounterId != null && encounterRepository.findById(scope, encounterId) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
+        if (encounterId != null) {
+            val encounter = encounterRepository.findById(scope, encounterId)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
+            if (encounter.patientId != order.patientId) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Encounter does not belong to the order's patient")
+            }
         }
         resultObservationIds.forEach { observationId ->
             val observation = observationRepository.findById(scope, observationId)
