@@ -26,6 +26,7 @@ import dev.ehr.provenance.ProvenanceRepository
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
+import dev.ehr.security.TenantContextHolder
 import dev.ehr.terminology.CodeableConcept
 import dev.ehr.terminology.CodeableConceptId
 import dev.ehr.terminology.CodeableConceptRepository
@@ -74,6 +75,7 @@ class ExportJobProcessor(
 
     fun process(job: ExportJob) {
         val scope = TenantScope(job.organizationId)
+        TenantContextHolder.set(job.organizationId)
         try {
             exportJobRepository.markInProgress(job.id)
 
@@ -198,6 +200,8 @@ class ExportJobProcessor(
                 outcome = AuditOutcome.FAILURE,
                 resourceId = job.id,
             )
+        } finally {
+            TenantContextHolder.clear()
         }
     }
 

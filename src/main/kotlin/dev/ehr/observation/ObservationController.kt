@@ -108,6 +108,7 @@ data class RecordObservationRequest(
     val effectiveAt: Instant?,
     val encounterId: UUID? = null,
     val status: ObservationStatus? = null,
+    @field:Valid
     val valueQuantity: QuantityValueRequest? = null,
     val valueConceptId: UUID? = null,
     val valueText: String? = null,
@@ -138,6 +139,7 @@ data class RecordObservationRequest(
 data class AmendObservationRequest(
     @field:NotNull
     val expectedVersion: Int?,
+    @field:Valid
     val valueQuantity: QuantityValueRequest? = null,
     val valueConceptId: UUID? = null,
     val valueText: String? = null,

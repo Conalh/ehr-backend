@@ -95,6 +95,7 @@ data class CreatePatientRequest(
     val familyName: String,
     val birthDate: LocalDate? = null,
     val administrativeGender: PatientAdministrativeGender? = null,
+    @field:Valid
     val identifiers: List<CreatePatientIdentifierRequest> = emptyList(),
 )
 

@@ -14,7 +14,7 @@ This repository is for building a real, production-shaped EHR backend foundation
 - Do not use a runtime flag that implies real-PHI mode is available. This product line is synthetic-only until a separate compliance gate exists.
 - Do not store clinical concepts as display strings only. Use coded terminology structures.
 - Do not expose clinical endpoints that bypass authorization, audit, tenancy, or provenance rules.
-- Do not hand-wave FHIR search as simple SQL filters; use the search infrastructure described in the architecture docs.
+- Do not hand-wave FHIR search as unscoped SQL filters; resolve search parameters at the FHIR boundary over tenant- and compartment-scoped reads, and record index/extractor/`_count`/pagination gaps explicitly (see `docs/architecture/architecture-spine.md`).
 
 ## Architecture Commitments
 

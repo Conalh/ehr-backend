@@ -1,0 +1,4 @@
+ehr:
+  security:
+    dev-jwt-enabled: true
+    dev-jwt-secret: ehr-core-test-only-dev-jwt-secret-minimum-32-bytes

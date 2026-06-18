@@ -1,8 +1,8 @@
 package dev.ehr.careteam
 
+import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.identity.UserId
-import dev.ehr.identity.UserRepository
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.security.AuditEventService
@@ -25,7 +25,7 @@ class CareTeamService(
     private val auditEventService: AuditEventService,
     private val careTeamRepository: CareTeamRepository,
     private val patientRepository: PatientRepository,
-    private val userRepository: UserRepository,
+    private val membershipRepository: MembershipRepository,
     private val transactionTemplate: TransactionTemplate,
 ) {
     fun addMember(
@@ -39,7 +39,11 @@ class CareTeamService(
             auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to manage care teams")
         }
-        if (userRepository.findById(userId) == null) {
+        if (membershipRepository.findActiveByOrganizationAndUser(
+                principal.organization.organizationId,
+                userId,
+            ) == null
+        ) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown user")
         }
 

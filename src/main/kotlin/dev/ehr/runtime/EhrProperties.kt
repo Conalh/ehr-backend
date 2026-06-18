@@ -1,11 +1,13 @@
 package dev.ehr.runtime
 
 import jakarta.validation.Valid
+import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.validation.annotation.Validated
+import java.nio.charset.StandardCharsets
 
 /**
  * Validated, typed configuration for the security-critical settings.
@@ -24,8 +26,6 @@ data class EhrProperties(
     val compartment: Compartment = Compartment(),
 ) {
     data class Security(
-        @field:NotBlank
-        @field:Size(min = 32, message = "ehr.security.dev-jwt-secret must be at least 32 bytes for HS256")
         val devJwtSecret: String = "",
         // Issuer of tokens minted by the embedded authorization server; the
         // resource-server decoder routes on it.
@@ -37,7 +37,17 @@ data class EhrProperties(
         @field:NotBlank
         @field:Size(min = 16, message = "ehr.security.dev-login-password must be at least 16 characters")
         val devLoginPassword: String = "",
-    )
+        val devJwtEnabled: Boolean = false,
+    ) {
+        @AssertTrue(message = "ehr.security.dev-jwt-secret must be at least 32 bytes when ehr.security.dev-jwt-enabled is true")
+        fun isDevJwtSecretValidWhenEnabled(): Boolean =
+            !devJwtEnabled ||
+                (devJwtSecret.isNotBlank() && devJwtSecret.toByteArray(StandardCharsets.UTF_8).size >= MIN_HS256_KEY_BYTES)
+
+        private companion object {
+            const val MIN_HS256_KEY_BYTES = 32
+        }
+    }
 
     data class Export(
         @field:NotBlank

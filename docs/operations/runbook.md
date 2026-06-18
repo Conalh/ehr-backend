@@ -32,7 +32,8 @@ All security-critical settings live under the validated `ehr.*` prefix
 
 | Property | Default | Notes |
 | --- | --- | --- |
-| `ehr.security.dev-jwt-secret` | dev-only value via `EHR_DEV_JWT_SECRET` | HS256, ≥32 bytes enforced at startup |
+| `ehr.security.dev-jwt-enabled` | `false` (`EHR_DEV_JWT_ENABLED`) | gates the HS256 dev-JWT decoder; on only in the `test` profile |
+| `ehr.security.dev-jwt-secret` | none committed (`EHR_DEV_JWT_SECRET`) | HS256, ≥32 bytes; required only when `dev-jwt-enabled=true` |
 | `ehr.export.storage-dir` | `${java.io.tmpdir}/ehr-exports` | NDJSON export output |
 | `ehr.rate-limit.requests-per-minute` | 1000 | per client IP, `/api` + `/fhir` |
 | `ehr.compartment.encounter-derived-expiry-days` | 30 | encounter-derived care-team memberships auto-end this long after the sustaining encounter finishes |
@@ -72,13 +73,23 @@ and audited with `purpose_of_use = 'ETREAT'`, `relationship_basis =
 
 ## Authentication in development
 
-There is no authorization server yet (`/oauth/*` are declared stubs). Requests
-are authenticated with locally signed HS256 JWTs carrying the claims in
-`JwtClaimNames` (subject = `users.external_subject`, organization id, space-
-separated SMART scopes). The test suite's `DevJwtFactory` is the reference
-implementation for minting them; the subject must exist as an active user with
-an active membership in the target organization — identity is always resolved
-from the database, never trusted from the token.
+The embedded Spring Authorization Server is the primary authentication path:
+`/oauth/authorize` (authorization code + PKCE, with the synthetic patient
+launch picker), `/oauth/token`, `/oauth/revoke`, JWKS, and
+`/.well-known/smart-configuration`. The dev login page accepts any active user
+with the shared `ehr.security.dev-login-password` (users carry no credentials —
+synthetic data, no IdP); identity is always re-resolved from the database on
+every request, so revoking a client kills its live tokens immediately.
+
+The HS256 dev-JWT path is a test/dev convenience, **off by default**
+(`ehr.security.dev-jwt-enabled=false`): the resource server validates only the
+embedded AS's RS256 tokens and rejects every other issuer. It is flipped on by
+the `test` profile (`src/test/resources/application-test.yml`) so the
+`DevJwtFactory`-issued tokens authenticate in integration tests. The
+`ehr.security.dev-jwt-secret` is not committed by default — set
+`EHR_DEV_JWT_SECRET` (≥32 bytes) and `EHR_DEV_JWT_ENABLED=true` to use it
+locally. As on the AS path, identity is resolved from the database, never
+trusted from the token.
 
 ## Tests
 

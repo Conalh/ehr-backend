@@ -214,6 +214,21 @@ class CareTeamApiIntegrationTest : PostgresIntegrationTest() {
             }
     }
 
+    @Test
+    fun `a clinician cannot add a user from another organization to a care team`() {
+        val member = createMember(MembershipRole.CLINICIAN)
+        val outsider = createMember(MembershipRole.CLINICIAN)
+        val patient = createPatient(member.organization)
+
+        mockMvc.post("/api/v1/patients/${patient.id.value}/care-team") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"userId":"${outsider.user.id.value}","role":"ATTENDING"}"""
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
     private fun createUserInOrg(organization: Organization): User {
         val suffix = UUID.randomUUID()
         val user = userRepository.create(

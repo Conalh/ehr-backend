@@ -15,6 +15,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm
+import org.springframework.security.oauth2.jwt.BadJwtException
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration
@@ -86,18 +87,29 @@ class SecurityConfiguration {
     /**
      * Routes by unverified issuer: tokens minted by the embedded
      * authorization server validate against its local JWKS (RS256);
-     * everything else falls through to the HS256 dev decoder.
+     * everything else falls through to the HS256 dev decoder. The dev
+     * decoder is registered only when ehr.security.dev-jwt-enabled is true,
+     * so a default boot rejects untrusted-issuer tokens outright.
      */
     @Bean
     fun jwtDecoder(
         properties: EhrProperties,
         jwkSource: JWKSource<SecurityContext>,
     ): JwtDecoder {
+        val authorizationServerDecoder = OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource)
+        val embeddedIssuer = properties.security.issuer
+        if (!properties.security.devJwtEnabled) {
+            return JwtDecoder { token ->
+                val unverifiedIssuer = runCatching { JWTParser.parse(token).jwtClaimsSet.issuer }.getOrNull()
+                if (unverifiedIssuer != embeddedIssuer) {
+                    throw BadJwtException("Untrusted JWT issuer")
+                }
+                authorizationServerDecoder.decode(token)
+            }
+        }
         val devDecoder = NimbusJwtDecoder.withSecretKey(devJwtSecretKey(properties.security.devJwtSecret))
             .macAlgorithm(MacAlgorithm.HS256)
             .build()
-        val authorizationServerDecoder = OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource)
-        val embeddedIssuer = properties.security.issuer
         return JwtDecoder { token ->
             val unverifiedIssuer = runCatching { JWTParser.parse(token).jwtClaimsSet.issuer }.getOrNull()
             if (unverifiedIssuer == embeddedIssuer) {

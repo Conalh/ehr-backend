@@ -192,18 +192,24 @@ Supported search parameter types:
 - string
 - quantity
 
-Search tables or indexed projections should record extracted search parameters from normalized resources. Every FHIR search must enforce tenant and patient-compartment restrictions after resolving includes and reverse-includes.
+**Implemented approach (UC4 amendment, June 2026):** search parameters are
+resolved at the FHIR boundary as predicates over the tenant- and patient-
+compartment-scoped domain reads, not via dedicated search-index tables. Every
+FHIR search enforces tenancy and compartment restrictions (cross-tenant is a
+404, never a row), and the search-parameter registry drives the generated
+CapabilityStatement so no interaction is advertised that does not exist.
 
-Minimum search infrastructure:
+**Deferred from the original minimum** (recorded in
+`docs/conformance/inferno-g10.md`):
 
-- search parameter registry
-- extractor from domain state to search index
-- cursor pagination
-- supported `_count`
-- generated CapabilityStatement search declarations
-- tests proving search returns only visible records
+- extractor from domain state to indexed search tables;
+- cursor pagination and supported `_count` (bundles are currently unbounded
+  with a `self` link only);
+- `_sort`, `_lastUpdated`, `_include` (chained search).
 
-Chained search, `_include`, `_revinclude`, `_sort`, and `_history` should be added deliberately, not accidentally through broad query parameters.
+`_revinclude=Provenance:target` is supported on the four profiled clinical
+searches. Chained search, `_include`, `_sort`, and `_history` should be added
+deliberately, not accidentally through broad query parameters.
 
 ## Terminology Spine
 
@@ -270,9 +276,10 @@ Slice 2: Patient Registry And Identity
 Slice 2.5: FHIR Search Infrastructure
 
 - Search parameter registry.
-- Indexed token/reference/date/string/quantity params.
+- Boundary predicate resolution over tenant/compartment-scoped reads
+  (UC4 amendment; indexed projections, cursor pagination, and `_count`
+  deferred — see "FHIR Search Infrastructure" above).
 - Patient compartment checks.
-- Cursor pagination.
 - CapabilityStatement from registry.
 
 Slice 3: Encounter Timeline With Terminology
