@@ -108,6 +108,14 @@ class PatientService(
         principal: SecurityPrincipal,
         system: String,
         value: String,
+    ): List<PatientWithIdentifiers> =
+        search(principal, patientId = null, identifierSystem = system, identifierValue = value)
+
+    fun search(
+        principal: SecurityPrincipal,
+        patientId: PatientId?,
+        identifierSystem: String?,
+        identifierValue: String?,
     ): List<PatientWithIdentifiers> {
         val decision = evaluate(principal, PolicyOperation.READ)
         if (!decision.allowed) {
@@ -117,10 +125,24 @@ class PatientService(
 
         val tenantScope = tenantScope(principal)
         // A launch-bound principal only ever sees the launched patient,
-        // even through identifier search.
+        // even through search parameters.
         val launchBound = principal.launchBoundPatientId()
-        val patient = patientRepository.findByIdentifier(tenantScope, system, value)
+        val idMatch = patientId
+            ?.let { patientRepository.findById(tenantScope, it) }
             ?.takeIf { launchBound == null || it.id.value == launchBound }
+        val identifierMatch = if (identifierSystem != null && identifierValue != null) {
+            patientRepository.findByIdentifier(tenantScope, identifierSystem, identifierValue)
+                ?.takeIf { launchBound == null || it.id.value == launchBound }
+        } else {
+            null
+        }
+        val patient = when {
+            patientId != null && identifierSystem != null -> idMatch?.takeIf { it.id == identifierMatch?.id }
+            patientId != null -> idMatch
+            identifierSystem != null -> identifierMatch
+            else -> null
+        }
+
         auditEventService.recordResourceAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
@@ -132,7 +154,6 @@ class PatientService(
             ?.let { listOf(PatientWithIdentifiers(it, patientRepository.findIdentifiers(tenantScope, it.id))) }
             ?: emptyList()
     }
-
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,

@@ -259,6 +259,7 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
 
     @Test
     fun `fhir patient search by _id returns a singleton or an honest empty bundle`() {
+        val correlationId = "fhir-search-id-${UUID.randomUUID()}"
         val member = createMember(MembershipRole.CLINICIAN, "user/Patient.read")
         val patient = createPatient(member.organization)
         val otherOrganization = createOrganization()
@@ -267,6 +268,7 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
         mockMvc.get("/fhir/r4/Patient") {
             param("_id", patient.id.value.toString())
             header("Authorization", "Bearer ${member.token}")
+            header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isOk() }
             jsonPath("$.type") { value("searchset") }
@@ -289,10 +291,16 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
             status { isOk() }
             jsonPath("$.total") { value(0) }
         }
+
+        val audit = auditRow(correlationId)
+        assertEquals("SEARCH", audit.operation)
+        assertEquals("SUCCESS", audit.outcome)
+        assertEquals(patient.id.value.toString(), audit.patientId)
     }
 
     @Test
     fun `fhir patient search combines id and identifier with and semantics`() {
+        val correlationId = "fhir-search-id-identifier-${UUID.randomUUID()}"
         val member = createMember(MembershipRole.CLINICIAN, "user/Patient.read")
         val patientA = createPatient(member.organization)
         val patientB = createPatient(member.organization)
@@ -324,12 +332,18 @@ class PatientFhirApiIntegrationTest : PostgresIntegrationTest() {
             param("_id", patientA.id.value.toString())
             param("identifier", "$identifierSystem|MRN-B")
             header("Authorization", "Bearer ${member.token}")
+            header("X-Correlation-Id", correlationId)
         }.andExpect {
             status { isOk() }
             jsonPath("$.resourceType") { value("Bundle") }
             jsonPath("$.type") { value("searchset") }
             jsonPath("$.total") { value(0) }
         }
+
+        val audit = auditRow(correlationId)
+        assertEquals("SEARCH", audit.operation)
+        assertEquals("SUCCESS", audit.outcome)
+        assertEquals(null, audit.patientId)
     }
 
     private fun createOrganization(): Organization {

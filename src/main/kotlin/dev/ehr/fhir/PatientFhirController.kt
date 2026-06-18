@@ -54,35 +54,19 @@ class PatientFhirController(
         val principal = securityPrincipal(authentication)
 
         return try {
-            val idResults = if (id != null) {
-                // _id search: a non-match (unknown id, cross-tenant) is an
-                // empty bundle per FHIR search semantics, never a 404.
-                parsePatientId(id)
-                    ?.let { patientId ->
-                        try {
-                            listOf(patientService.get(principal, patientId))
-                        } catch (notFound: ResponseStatusException) {
-                            if (notFound.statusCode == HttpStatus.NOT_FOUND) emptyList() else throw notFound
-                        }
-                    }
-                    ?: emptyList()
-            } else {
-                null
-            }
-
-            val identifierResults = if (identifier != null) {
-                val token = parseIdentifierToken(identifier)
+            val patientId = id?.let(::parsePatientId)
+            val identifierToken = if (identifier != null) {
+                parseIdentifierToken(identifier)
                     ?: return responses.operationOutcome(
                         HttpStatus.BAD_REQUEST,
                         OperationOutcome.IssueType.INVALID,
                         "The identifier search parameter must be in system|value form",
                     )
-                patientService.searchByIdentifier(principal, token.first, token.second)
             } else {
                 null
             }
 
-            if (idResults == null && identifierResults == null) {
+            if (id == null && identifierToken == null) {
                 return responses.operationOutcome(
                     HttpStatus.BAD_REQUEST,
                     OperationOutcome.IssueType.INVALID,
@@ -90,14 +74,16 @@ class PatientFhirController(
                 )
             }
 
-            val results = when {
-                idResults != null && identifierResults != null -> {
-                    val identifierIds = identifierResults.map { it.patient.id }.toSet()
-                    idResults.filter { it.patient.id in identifierIds }
-                }
-                idResults != null -> idResults
-                else -> identifierResults.orEmpty()
+            if (id != null && patientId == null) {
+                return responses.resource(HttpStatus.OK, searchBundle(emptyList()))
             }
+
+            val results = patientService.search(
+                principal = principal,
+                patientId = patientId,
+                identifierSystem = identifierToken?.first,
+                identifierValue = identifierToken?.second,
+            )
             responses.resource(HttpStatus.OK, searchBundle(results))
         } catch (exception: ResponseStatusException) {
             responses.fromStatusException(exception)
