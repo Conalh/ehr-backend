@@ -84,6 +84,14 @@ class BulkExportFhirIntegrationTest : PostgresIntegrationTest() {
             status { isBadRequest() }
             jsonPath("$.issue[0].code") { value("not-supported") }
         }
+        mockMvc.get("/fhir/r4/\$export") {
+            header("Authorization", "Bearer $token")
+            header("Prefer", "respond-async")
+            param("_since", "2026-01-01T00:00:00Z")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.issue[0].code") { value("not-supported") }
+        }
 
         val kickoff = mockMvc.get("/fhir/r4/\$export") {
             header("Authorization", "Bearer $token")

@@ -23,8 +23,8 @@ import java.util.UUID
 /**
  * FHIR Bulk Data export protocol over the Slice 8 export engine.
  * System-level $export only; Group/Patient-level exports and the _type
- * filter are recorded gaps (docs/conformance/inferno-g10.md), refused
- * loudly rather than silently absorbed.
+ * and _since filters are recorded gaps (docs/conformance/inferno-g10.md),
+ * refused loudly rather than silently absorbed.
  */
 @RestController
 @RequestMapping("/fhir/r4")
@@ -37,6 +37,7 @@ class BulkExportFhirController(
         authentication: Authentication,
         @RequestHeader(name = "Prefer", required = false) prefer: String?,
         @RequestParam(name = "_type", required = false) type: String?,
+        @RequestParam(name = "_since", required = false) since: String?,
     ): ResponseEntity<String> {
         val principal = securityPrincipal(authentication)
         if (prefer?.contains("respond-async") != true) {
@@ -51,6 +52,13 @@ class BulkExportFhirController(
                 HttpStatus.BAD_REQUEST,
                 OperationOutcome.IssueType.NOTSUPPORTED,
                 "The _type parameter is not supported; every supported resource type is exported",
+            )
+        }
+        if (since != null) {
+            return responses.operationOutcome(
+                HttpStatus.BAD_REQUEST,
+                OperationOutcome.IssueType.NOTSUPPORTED,
+                "The _since parameter is not supported; every supported resource is exported",
             )
         }
 
