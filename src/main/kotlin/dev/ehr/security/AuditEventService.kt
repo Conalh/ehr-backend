@@ -68,6 +68,15 @@ class AuditEventService(
     /**
      * For background workers (e.g. the export processor) acting on behalf of a
      * recorded requester without a live security principal or policy decision.
+     *
+     * [correlationId] defaults to the ambient request correlation, which is
+     * what request-thread callers (e.g. the patient picker) want. Work that
+     * runs on an async executor must pass `correlationId = null`: the export
+     * task decorator propagates the originating request's correlation into the
+     * worker's MDC for log tracing, but adopting it here would make every
+     * file-creation event collide with the kickoff's audit row, breaking the
+     * one-event-per-correlation invariant. Such events are keyed by requester
+     * and resource instead.
      */
     @Transactional
     fun recordBackgroundEvent(
@@ -77,6 +86,7 @@ class AuditEventService(
         operation: AuditOperation,
         outcome: AuditOutcome,
         resourceId: UUID? = null,
+        correlationId: String? = MDC.get(CorrelationIdFilter.MDC_KEY),
     ): AuditEventRecord =
         auditEventRepository.append(
             AuditEventCommand(
@@ -88,7 +98,7 @@ class AuditEventService(
                 outcome = outcome,
                 policyVersion = null,
                 policyReasonCode = null,
-                correlationId = MDC.get(CorrelationIdFilter.MDC_KEY),
+                correlationId = correlationId,
             ),
         )
 

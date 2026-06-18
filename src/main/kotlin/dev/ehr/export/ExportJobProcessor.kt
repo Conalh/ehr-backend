@@ -180,6 +180,9 @@ class ExportJobProcessor(
                     operation = AuditOperation.SYSTEM,
                     outcome = AuditOutcome.SUCCESS,
                     resourceId = fileRecord.id,
+                    // Async-produced event: keyed by requester + file, not the
+                    // kickoff request's correlation.
+                    correlationId = null,
                 )
             }
 
@@ -197,6 +200,9 @@ class ExportJobProcessor(
                 operation = AuditOperation.SYSTEM,
                 outcome = AuditOutcome.FAILURE,
                 resourceId = job.id,
+                // Async-produced event: keyed by requester + job, not the
+                // kickoff request's correlation.
+                correlationId = null,
             )
         }
     }
