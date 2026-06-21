@@ -71,14 +71,27 @@ class LaunchContextAuthorizationService(
         if (authorization.getAttribute<UUID>(LAUNCH_PATIENT_ATTRIBUTE) != null) {
             return authorization
         }
-        val session = (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)
-            ?.request?.getSession(false)
+        val request = (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)
+            ?.request
             ?: return authorization
-        val selectedPatient = session.getAttribute(PatientLaunchSession.SELECTED_PATIENT) as? UUID
-            ?: return authorization
-        return OAuth2Authorization.from(authorization)
-            .attribute(LAUNCH_PATIENT_ATTRIBUTE, selectedPatient)
+        val session = request.getSession(false)
+        val transaction =
+            request.getAttribute(PatientLaunchSession.ACTIVE_TRANSACTION_REQUEST_ATTRIBUTE) as? PatientLaunchTransaction
+                ?: session?.let { PatientLaunchSession.pendingTransaction(it) }
+                ?: return authorization
+        val selection =
+            request.getAttribute(PatientLaunchSession.ACTIVE_SELECTION_REQUEST_ATTRIBUTE) as? PatientLaunchSelection
+                ?: session?.let { PatientLaunchSession.selectedTransaction(it) }
+                ?: return authorization
+        if (!selection.matches(transaction)) {
+            session?.let { PatientLaunchSession.clear(it) }
+            return authorization
+        }
+        val stamped = OAuth2Authorization.from(authorization)
+            .attribute(LAUNCH_PATIENT_ATTRIBUTE, selection.patientId)
             .build()
+        session?.let { PatientLaunchSession.clear(it) }
+        return stamped
     }
 
     companion object {

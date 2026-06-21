@@ -111,6 +111,7 @@ class PatientLaunchIntegrationTest : PostgresIntegrationTest() {
         mockMvc.post("/launch/patient-picker") {
             this.session = session
             with(csrf())
+            param(PatientLaunchSession.LAUNCH_TRANSACTION_ID_PARAM, launchTransactionId(session))
             param("patientId", launchedPatient.id.value.toString())
         }.andExpect {
             status { is3xxRedirection() }
@@ -208,6 +209,72 @@ class PatientLaunchIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `launch selection is bound to the parked authorize transaction`() {
+        val fixture = createFixture()
+        val launchedPatient = createPatient(fixture.organization, "Bound")
+        val firstClient = registerLaunchClient(fixture)
+        val secondClient = registerLaunchClient(fixture)
+        val session = devLogin(fixture.clinician)
+        val firstAuthorizeUrl = authorizeUrl(firstClient, challengeFor("v-${UUID.randomUUID()}"))
+
+        mockMvc.get(URI.create(firstAuthorizeUrl)) {
+            this.session = session
+        }.andExpect {
+            status { is3xxRedirection() }
+            redirectedUrl("/launch/patient-picker")
+        }
+        mockMvc.post("/launch/patient-picker") {
+            this.session = session
+            with(csrf())
+            param(PatientLaunchSession.LAUNCH_TRANSACTION_ID_PARAM, launchTransactionId(session))
+            param("patientId", launchedPatient.id.value.toString())
+        }.andExpect {
+            status { is3xxRedirection() }
+        }
+
+        val secondAuthorizeUrl = authorizeUrl(secondClient, challengeFor("v-${UUID.randomUUID()}"))
+        mockMvc.get(URI.create(secondAuthorizeUrl)) {
+            this.session = session
+        }.andExpect {
+            status { is3xxRedirection() }
+            redirectedUrl("/launch/patient-picker")
+        }
+    }
+
+    @Test
+    fun `launch selection is consumed after authorization resumes`() {
+        val fixture = createFixture()
+        val launchedPatient = createPatient(fixture.organization, "Consumed")
+        val clientIdentifier = registerLaunchClient(fixture)
+        val session = devLogin(fixture.clinician)
+        val firstAuthorizeUrl = authorizeUrl(clientIdentifier, challengeFor("v-${UUID.randomUUID()}"))
+
+        mockMvc.get(URI.create(firstAuthorizeUrl)) {
+            this.session = session
+        }.andExpect {
+            status { is3xxRedirection() }
+            redirectedUrl("/launch/patient-picker")
+        }
+        mockMvc.post("/launch/patient-picker") {
+            this.session = session
+            with(csrf())
+            param(PatientLaunchSession.LAUNCH_TRANSACTION_ID_PARAM, launchTransactionId(session))
+            param("patientId", launchedPatient.id.value.toString())
+        }.andExpect {
+            status { is3xxRedirection() }
+        }
+        authorizeForCode(session, firstAuthorizeUrl)
+
+        val secondAuthorizeUrl = authorizeUrl(clientIdentifier, challengeFor("v-${UUID.randomUUID()}"))
+        mockMvc.get(URI.create(secondAuthorizeUrl)) {
+            this.session = session
+        }.andExpect {
+            status { is3xxRedirection() }
+            redirectedUrl("/launch/patient-picker")
+        }
+    }
+
+    @Test
     fun `the picker rejects patients outside the user's organization`() {
         val fixture = createFixture()
         val foreignOrganization = organizationRepository.create(
@@ -228,6 +295,7 @@ class PatientLaunchIntegrationTest : PostgresIntegrationTest() {
         mockMvc.post("/launch/patient-picker") {
             this.session = session
             with(csrf())
+            param(PatientLaunchSession.LAUNCH_TRANSACTION_ID_PARAM, launchTransactionId(session))
             param("patientId", foreignPatient.id.value.toString())
         }.andExpect {
             status { isBadRequest() }
@@ -291,6 +359,12 @@ class PatientLaunchIntegrationTest : PostgresIntegrationTest() {
             status { isCreated() }
         }
         return identifier
+    }
+
+    private fun launchTransactionId(session: MockHttpSession): String {
+        val transaction = session.getAttribute(PatientLaunchSession.PENDING_TRANSACTION) as? PatientLaunchTransaction
+        assertNotNull(transaction, "expected a pending patient launch transaction")
+        return transaction!!.id.toString()
     }
 
     private fun createPatient(
