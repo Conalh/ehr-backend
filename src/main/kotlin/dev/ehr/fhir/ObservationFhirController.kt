@@ -5,8 +5,6 @@ import dev.ehr.observation.ObservationCategory
 import dev.ehr.observation.ObservationId
 import dev.ehr.observation.ObservationService
 import dev.ehr.observation.ObservationValue
-import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
 import dev.ehr.terminology.CanonicalCodeSystems
 import dev.ehr.terminology.CodeableConcept
 import dev.ehr.terminology.CodeableConceptId
@@ -34,14 +32,15 @@ class ObservationFhirController(
     private val provenanceQueryService: dev.ehr.provenance.ProvenanceQueryService,
     private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
+    private val requestSupport: FhirRequestSupport,
 ) {
     @GetMapping("/Observation/{id}", produces = [FHIR_JSON])
     fun read(
         authentication: Authentication,
         @PathVariable id: String,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val observationId = parseUuid(id)?.let(::ObservationId)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val observationId = requestSupport.parseUuid(id)?.let(::ObservationId)
             ?: return responses.operationOutcome(
                 HttpStatus.NOT_FOUND,
                 OperationOutcome.IssueType.NOTFOUND,
@@ -65,8 +64,8 @@ class ObservationFhirController(
         @RequestParam(name = "date") date: List<String>?,
         @RequestParam(name = "_revinclude") revInclude: String?,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val patientId = parsePatientParam(patient)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val patientId = requestSupport.parsePatientParam(patient)
             ?: return responses.operationOutcome(
                 HttpStatus.BAD_REQUEST,
                 OperationOutcome.IssueType.INVALID,
@@ -104,7 +103,7 @@ class ObservationFhirController(
                 val fhirObservation = toFhir(observation)
                 bundle.addEntry(
                     Bundle.BundleEntryComponent()
-                        .setFullUrl(observationFullUrl(fhirObservation.idElement.idPart))
+                        .setFullUrl(requestSupport.resourceFullUrl("Observation", fhirObservation.idElement.idPart))
                         .setResource(fhirObservation)
                         .setSearch(
                             Bundle.BundleEntrySearchComponent()
@@ -121,7 +120,7 @@ class ObservationFhirController(
                 ).forEach { event ->
                     bundle.addEntry(
                         Bundle.BundleEntryComponent()
-                            .setFullUrl(provenanceFullUrl(event.id))
+                            .setFullUrl(requestSupport.resourceFullUrl("Provenance", event.id.toString()))
                             .setResource(provenanceFhirMapper.toFhirProvenance(event))
                             .setSearch(
                                 Bundle.BundleEntrySearchComponent()
@@ -150,30 +149,4 @@ class ObservationFhirController(
     ): CodeableConcept =
         codeableConceptRepository.findById(CodeableConceptId(conceptId))
             ?: throw IllegalStateException("$kind concept is missing")
-
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
-
-    private fun parsePatientParam(patient: String?): PatientId? {
-        if (patient.isNullOrBlank()) {
-            return null
-        }
-        return parseUuid(patient.removePrefix("Patient/"))?.let(::PatientId)
-    }
-
-    private fun parseUuid(value: String): UUID? =
-        runCatching { UUID.fromString(value) }.getOrNull()
-
-    private fun observationFullUrl(idPart: String): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/Observation/{id}")
-            .buildAndExpand(idPart)
-            .toUriString()
-
-    private fun provenanceFullUrl(id: UUID): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/Provenance/{id}")
-            .buildAndExpand(id)
-            .toUriString()
 }
