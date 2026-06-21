@@ -8,7 +8,7 @@ import dev.ehr.order.OrderRepository
 import dev.ehr.order.OrderStatus
 import dev.ehr.order.OrderTransitionCommand
 import dev.ehr.patient.PatientId
-import dev.ehr.patient.PatientRepository
+import dev.ehr.patient.PatientAccessGuard
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
@@ -33,7 +33,7 @@ class DiagnosticReportService(
     private val orderRepository: OrderRepository,
     private val observationRepository: ObservationRepository,
     private val encounterRepository: EncounterRepository,
-    private val patientRepository: PatientRepository,
+    private val patientAccessGuard: PatientAccessGuard,
     private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
 ) {
@@ -196,14 +196,7 @@ class DiagnosticReportService(
         )
 
         val scope = principal.tenantScope()
-        if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordFailedAccess(
-                decision = decision,
-                operation = AuditOperation.SEARCH,
-                resourceId = patientId.value,
-            )
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
-        }
+        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val reports = diagnosticReportRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

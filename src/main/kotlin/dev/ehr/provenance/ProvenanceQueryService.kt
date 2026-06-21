@@ -1,7 +1,7 @@
 package dev.ehr.provenance
 
 import dev.ehr.patient.PatientId
-import dev.ehr.patient.PatientRepository
+import dev.ehr.patient.PatientAccessGuard
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -19,7 +19,7 @@ class ProvenanceQueryService(
     private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val provenanceRepository: ProvenanceRepository,
-    private val patientRepository: PatientRepository,
+    private val patientAccessGuard: PatientAccessGuard,
 ) {
     fun get(
         principal: SecurityPrincipal,
@@ -116,14 +116,7 @@ class ProvenanceQueryService(
         val decision = authorize(principal, patientId = patientId)
 
         val scope = principal.tenantScope()
-        if (patientRepository.findById(scope, PatientId(patientId)) == null) {
-            auditEventService.recordFailedAccess(
-                decision = decision,
-                operation = AuditOperation.SEARCH,
-                resourceId = patientId,
-            )
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
-        }
+        patientAccessGuard.requirePatientForSearch(scope, PatientId(patientId), decision)
 
         val events = provenanceRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

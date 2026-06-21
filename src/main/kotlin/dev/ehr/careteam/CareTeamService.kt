@@ -3,7 +3,7 @@ package dev.ehr.careteam
 import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.UserId
 import dev.ehr.patient.PatientId
-import dev.ehr.patient.PatientRepository
+import dev.ehr.patient.PatientAccessGuard
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -22,7 +22,7 @@ class CareTeamService(
     private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val careTeamRepository: CareTeamRepository,
-    private val patientRepository: PatientRepository,
+    private val patientAccessGuard: PatientAccessGuard,
     private val membershipRepository: MembershipRepository,
     private val transactionTemplate: TransactionTemplate,
 ) {
@@ -83,14 +83,7 @@ class CareTeamService(
         )
 
         val scope = principal.tenantScope()
-        if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordFailedAccess(
-                decision = decision,
-                operation = AuditOperation.SEARCH,
-                resourceId = patientId.value,
-            )
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
-        }
+        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val members = careTeamRepository.findActiveByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

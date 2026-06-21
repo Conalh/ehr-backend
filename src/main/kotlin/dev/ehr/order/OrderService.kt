@@ -2,7 +2,7 @@ package dev.ehr.order
 
 import dev.ehr.encounter.EncounterRepository
 import dev.ehr.patient.PatientId
-import dev.ehr.patient.PatientRepository
+import dev.ehr.patient.PatientAccessGuard
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
@@ -26,7 +26,7 @@ class OrderService(
     private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val orderRepository: OrderRepository,
-    private val patientRepository: PatientRepository,
+    private val patientAccessGuard: PatientAccessGuard,
     private val encounterRepository: EncounterRepository,
     private val provenanceRecorder: ProvenanceRecorder,
     private val transactionTemplate: TransactionTemplate,
@@ -126,14 +126,7 @@ class OrderService(
         )
 
         val scope = principal.tenantScope()
-        if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordFailedAccess(
-                decision = decision,
-                operation = AuditOperation.SEARCH,
-                resourceId = patientId.value,
-            )
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
-        }
+        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val orders = orderRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(
