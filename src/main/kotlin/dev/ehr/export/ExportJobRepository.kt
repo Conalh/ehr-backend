@@ -44,7 +44,7 @@ class ExportJobRepository(
             jobId,
         ).singleOrNull()
 
-    fun markInProgress(jobId: UUID) {
+    fun markInProgress(jobId: UUID): Boolean =
         jdbcTemplate.update(
             """
             update export_jobs
@@ -52,8 +52,7 @@ class ExportJobRepository(
             where id = ? and status = 'pending'
             """.trimIndent(),
             jobId,
-        )
-    }
+        ) == 1
 
     fun markCompleted(jobId: UUID) {
         jdbcTemplate.update(

@@ -87,9 +87,12 @@ class ExportJobProcessor(
 
     fun process(job: ExportJob) {
         val scope = TenantScope(job.organizationId)
-        try {
-            exportJobRepository.markInProgress(job.id)
+        if (!exportJobRepository.markInProgress(job.id)) {
+            log.info("export job {} was not pending; skipping processor run", job.id)
+            return
+        }
 
+        try {
             val conceptCache = mutableMapOf<CodeableConceptId, CodeableConcept>()
             fun concept(id: CodeableConceptId): CodeableConcept =
                 conceptCache.getOrPut(id) {

@@ -40,6 +40,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import java.nio.file.Files
 import java.util.UUID
 
 @AutoConfigureMockMvc
@@ -71,6 +72,9 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
 
     @Autowired
     lateinit var exportJobRepository: ExportJobRepository
+
+    @Autowired
+    lateinit var exportJobProcessor: ExportJobProcessor
 
     @Autowired
     lateinit var codingRepository: CodingRepository
@@ -288,6 +292,89 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
             .andExpect {
                 status { isUnauthorized() }
             }
+    }
+
+    @Test
+    fun `export files are visible only after completion`() {
+        val pendingDownloadCorrelationId = "export-pending-download-${UUID.randomUUID()}"
+        val failedDownloadCorrelationId = "export-failed-download-${UUID.randomUUID()}"
+        val member = createMember(MembershipRole.CLINICIAN, "user/*.read user/*.write")
+        val job = exportJobRepository.create(
+            organizationId = member.organization.id,
+            requestedBy = member.user.id,
+        )
+        val tempFile = Files.createTempFile("ehr-pending-export-", ".ndjson")
+        Files.writeString(tempFile, """{"resourceType":"Patient"}""")
+        exportJobRepository.addFile(
+            organizationId = member.organization.id,
+            jobId = job.id,
+            resourceType = "Patient",
+            resourceCount = 1,
+            storagePath = tempFile.toString(),
+        )
+
+        mockMvc.get("/api/v1/export-jobs/${job.id}") {
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("pending") }
+            jsonPath("$.files.length()") { value(0) }
+        }
+
+        mockMvc.get("/api/v1/export-jobs/${job.id}/files/Patient") {
+            header("Authorization", "Bearer ${member.token}")
+            header("X-Correlation-Id", pendingDownloadCorrelationId)
+        }.andExpect {
+            status { isNotFound() }
+        }
+        assertEquals("FAILURE", auditRow(pendingDownloadCorrelationId).outcome)
+
+        exportJobRepository.markFailed(job.id, "failed before publish")
+
+        mockMvc.get("/api/v1/export-jobs/${job.id}") {
+            header("Authorization", "Bearer ${member.token}")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("failed") }
+            jsonPath("$.files.length()") { value(0) }
+        }
+
+        mockMvc.get("/api/v1/export-jobs/${job.id}/files/Patient") {
+            header("Authorization", "Bearer ${member.token}")
+            header("X-Correlation-Id", failedDownloadCorrelationId)
+        }.andExpect {
+            status { isNotFound() }
+        }
+        assertEquals("FAILURE", auditRow(failedDownloadCorrelationId).outcome)
+    }
+
+    @Test
+    fun `processor ignores jobs it cannot claim`() {
+        val member = createMember(MembershipRole.CLINICIAN, "user/*.read user/*.write")
+        val scope = TenantScope(member.organization.id)
+        val job = exportJobRepository.create(
+            organizationId = member.organization.id,
+            requestedBy = member.user.id,
+        )
+        exportJobRepository.markInProgress(job.id)
+        exportJobRepository.markCompleted(job.id)
+
+        exportJobProcessor.process(job)
+
+        val reloaded = exportJobRepository.findById(scope, job.id)!!
+        assertEquals(ExportJobStatus.COMPLETED, reloaded.status)
+        assertEquals(0, exportJobRepository.findFiles(scope, job.id).size)
+        val fileAuditCount = jdbcTemplate.queryForObject(
+            """
+            select count(*) from audit_events
+            where resource_type = 'EXPORT_FILE' and operation = 'SYSTEM'
+              and organization_id = ? and subject_user_id = ?
+            """.trimIndent(),
+            Int::class.java,
+            member.organization.id.value,
+            member.user.id.value,
+        )
+        assertEquals(0, fileAuditCount)
     }
 
     private fun createOrganizationWithData(): Organization {

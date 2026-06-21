@@ -3,10 +3,12 @@ package dev.ehr.export
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
+import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
 import dev.ehr.security.tenantScope
+import org.springframework.core.task.TaskRejectedException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -20,7 +22,7 @@ class ExportService(
     private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val exportJobRepository: ExportJobRepository,
-    private val exportJobProcessor: ExportJobProcessor,
+    private val exportJobDispatcher: ExportJobDispatcher,
 ) {
     fun request(principal: SecurityPrincipal): ExportJob {
         val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to request exports")
@@ -29,12 +31,34 @@ class ExportService(
             organizationId = principal.organization.organizationId,
             requestedBy = principal.subject.userId,
         )
+        try {
+            exportJobDispatcher.dispatch(job)
+        } catch (exception: TaskRejectedException) {
+            exportJobRepository.markFailed(
+                jobId = job.id,
+                errorMessage = "export scheduling failed (${exception.javaClass.simpleName})",
+            )
+            auditEventService.recordFailedAccess(
+                decision = decision,
+                operation = AuditOperation.EXPORT,
+                resourceId = job.id,
+            )
+            auditEventService.recordBackgroundEvent(
+                organizationId = job.organizationId,
+                subjectUserId = job.requestedBy,
+                resourceType = "EXPORT_JOB",
+                operation = AuditOperation.SYSTEM,
+                outcome = AuditOutcome.FAILURE,
+                resourceId = job.id,
+                correlationId = null,
+            )
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Export capacity is temporarily unavailable")
+        }
         auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.EXPORT,
             resourceId = job.id,
         )
-        exportJobProcessor.processAsync(job)
         return job
     }
 
@@ -60,7 +84,12 @@ class ExportService(
             operation = AuditOperation.READ,
             resourceId = job.id,
         )
-        return job to exportJobRepository.findFiles(scope, jobId)
+        val files = if (job.status == ExportJobStatus.COMPLETED) {
+            exportJobRepository.findFiles(scope, jobId)
+        } else {
+            emptyList()
+        }
+        return job to files
     }
 
     fun download(
@@ -71,7 +100,9 @@ class ExportService(
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to download exports", resourceId = jobId)
 
         val scope = principal.tenantScope()
-        val file = exportJobRepository.findById(scope, jobId)
+        val job = exportJobRepository.findById(scope, jobId)
+        val file = job
+            ?.takeIf { it.status == ExportJobStatus.COMPLETED }
             ?.let { exportJobRepository.findFiles(scope, jobId) }
             ?.singleOrNull { it.resourceType == resourceType }
         if (file == null) {
