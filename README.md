@@ -51,7 +51,7 @@ from audit_events where correlation_id = '...';
 
       operation       |     policy_reason_code     | relationship_basis | policy_version
 ----------------------+----------------------------+--------------------+-----------------
- AUTHORIZATION_DENIED | NO_TREATMENT_RELATIONSHIP  |                    | policy-spine-v17
+ AUTHORIZATION_DENIED | NO_TREATMENT_RELATIONSHIP  |                    | policy-spine-v20
 ```
 
 The same read with `X-Break-Glass-Reason: "Unresponsive patient in the ED"` succeeds — and is audited with `purpose_of_use = ETREAT`, `relationship_basis = break-glass`, and the reason in audit metadata. Break-glass never bypasses tenancy, roles, or scopes; only the relationship requirement, and only for reads.
@@ -76,7 +76,7 @@ Most EHR-shaped demos are CRUD with a login. The hard part of clinical software 
 | `/api/v1/**` | Operational REST API: patient registry, encounters, problem list, allergies, observations, medications, notes (amend/error workflows), orders → results, patient chart, care-team management, OAuth client registration, bulk export jobs |
 | `/fhir/r4/**` | Read-only FHIR R4: `Patient`, `Encounter`, `Condition`, `AllergyIntolerance`, `Observation`, `MedicationStatement`, `DocumentReference`, `DiagnosticReport`, `Provenance`, `CareTeam`, `Practitioner` + public `metadata` CapabilityStatement |
 | `/oauth/*` + `/.well-known/smart-configuration` | The embedded authorization server: authorize (with the patient-launch picker), token, revoke, JWKS, and accurate SMART discovery |
-| `/fhir/r4/$export` | The FHIR Bulk Data kickoff/status protocol over async NDJSON export jobs, authorized for clinicians and backend-services clients |
+| `/fhir/r4/$export` | The FHIR Bulk Data kickoff/status protocol over async NDJSON export jobs, authorized for clinicians and backend-services clients. System-level jobs export every supported resource type; `_type` and `_since` are refused with OperationOutcome until filtered exports are implemented. |
 
 ## The authorization model
 
@@ -101,7 +101,7 @@ Patient demographics and encounter scheduling stay org-wide by design (registrat
 ## Tests
 
 ```powershell
-.\gradlew.bat test    # 380 tests; Testcontainers needs Docker
+.\gradlew.bat test    # 383 tests; Testcontainers needs Docker
 ```
 
 The suite is integration-first: real Postgres via Testcontainers, MockMvc against the full security filter chain, audit rows asserted by correlation id, FHIR responses validated against the R4 core spec, and adversarial cases throughout — cross-tenant probes, stale-version conflicts, double state transitions, denied-access audit trails, break-glass without a reason, wrong PKCE verifiers, refresh-token reuse, and a patient-launched token probing another patient's chart. The OAuth flows are tested as full dances: login → picker → authorize → exchange → use → rotate → revoke.

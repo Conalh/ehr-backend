@@ -40,7 +40,7 @@ Discovery is at `/.well-known/smart-configuration`.
 | Single Patient API: US Core profiles | **Partial — 8 profiles proven** | `us-core-patient`, `us-core-vital-signs`, `us-core-observation-lab`, `us-core-diagnosticreport-lab`, `us-core-condition-problems-health-concerns`, `us-core-allergyintolerance`, `us-core-careteam` (participant-bearing instances), and `us-core-provenance` — each declared in `meta.profile`/`supportedProfile` and validated against the US Core 6.1 package in the conformance suite. **Recorded demotions** (base R4 only, each traced to a validator finding): Encounter (`Encounter.type` not modeled), DocumentReference (the required type binding composes over full LOINC, not validatable offline), Practitioner (no structured family name), MedicationStatement (dropped by US Core). |
 | Single Patient API: searches | **Partial — the SHALL set for claimed profiles** | Patient `_id` + `identifier`; Condition `patient`/`category`/`clinical-status`; Observation `patient`/`category`/`code`/`date`; CareTeam `patient`/`status`; DiagnosticReport `patient`/`category`/`code`/`date`; `_revinclude=Provenance:target` on the four profiled clinical searches. Date prefixes `eq\|ge\|gt\|le\|lt`; combinations AND. Gaps: Patient `name`/`birthdate`/`gender` searches, `_include`, `_lastUpdated`, paging. |
 | Missing resource types vs US Core (Immunization, Procedure, CarePlan, Device, Goal, Location, Organization read, PractitionerRole) | **Out of scope (recorded — scope C of the alignment design)** | CareTeam and Practitioner were added (H4/AS2B); the rest follow the established vertical pattern if an Inferno run makes them decisive. |
-| Multi-Patient (Bulk Data) API | **Partial — system-level** | The FHIR `$export` kickoff/status protocol is live over the async NDJSON engine, authorized by backend-services (client-credentials) tokens (AS1/AS4). Gaps: `Group/[id]/$export` (no Group resource), `_type` refused with OperationOutcome while `_since` is currently silently ignored (correctness gap to close), DELETE-cancel. g10's multi-patient group specifically drives Group-level export. |
+| Multi-Patient (Bulk Data) API | **Partial — system-level** | The FHIR `$export` kickoff/status protocol is live over the async NDJSON engine, authorized by backend-services (client-credentials) tokens (AS1/AS4). Gaps: `Group/[id]/$export` and `Patient/$export`; `_type` and `_since` are both refused with OperationOutcome until filtered exports exist; DELETE-cancel. g10's multi-patient group specifically drives Group-level export. |
 | Invalid token / invalid request handling | **Expected pass** | 401 on missing/invalid tokens everywhere; OperationOutcome errors with correct issue codes; OAuth protocol errors from the live endpoints. |
 | US Core profile validation of returned resources | **Out of scope until validated** | Base R4 validation only; claiming profiles before validating against them violates the project's honesty rule (AGENTS.md). |
 
@@ -48,8 +48,8 @@ Discovery is at `/.well-known/smart-configuration`.
 
 1. EHR launch (`launch` scope and launch-context resolution).
 2. Refresh tokens for public clients.
-3. `Group/[id]/$export` and `Patient/$export`; `_type` (refused) / `_since`
-   (silently ignored — correctness gap); export cancel.
+3. `Group/[id]/$export` and `Patient/$export`; `_type` and `_since` filters
+   (both refused with OperationOutcome until supported); export cancel.
 4. US Core profiles for Encounter, DocumentReference, Practitioner, and
    MedicationStatement (each demoted with a recorded, validator-traced
    reason — see the matrix).
