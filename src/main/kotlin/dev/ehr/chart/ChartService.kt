@@ -16,11 +16,10 @@ import dev.ehr.observation.ObservationRepository
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.patient.PatientWithIdentifiers
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -40,7 +39,7 @@ data class PatientChart(
 
 @Service
 class ChartService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val patientRepository: PatientRepository,
     private val encounterRepository: EncounterRepository,
@@ -54,19 +53,13 @@ class ChartService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): PatientChart {
-        val decision = policyEvaluator.evaluate(
+        val decision = accessAuthorizer.authorize(
             principal = principal,
-            request = PolicyEvaluationRequest(
-                resourceType = PolicyResourceType.CHART,
-                operation = PolicyOperation.READ,
-                organizationId = principal.organization.organizationId,
-                patientId = patientId.value,
-            ),
+            resourceType = PolicyResourceType.CHART,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read patient charts",
+            patientId = patientId.value,
         )
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read patient charts")
-        }
 
         val scope = TenantScope(principal.organization.organizationId)
         val patient = patientRepository.findById(scope, patientId)

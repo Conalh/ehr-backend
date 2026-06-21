@@ -1,11 +1,10 @@
 package dev.ehr.export
 
 import dev.ehr.identity.TenantScope
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -19,17 +18,13 @@ import java.util.UUID
 
 @Service
 class ExportService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val exportJobRepository: ExportJobRepository,
     private val exportJobProcessor: ExportJobProcessor,
 ) {
     fun request(principal: SecurityPrincipal): ExportJob {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to request exports")
-        }
+        val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to request exports")
 
         val job = exportJobRepository.create(
             organizationId = principal.organization.organizationId,
@@ -49,11 +44,7 @@ class ExportService(
         principal: SecurityPrincipal,
         jobId: UUID,
     ): Pair<ExportJob, List<ExportJobFile>> {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = jobId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read exports")
-        }
+        val decision = authorize(principal, PolicyOperation.READ, "Not authorized to read exports", resourceId = jobId)
 
         val scope = tenantScope(principal)
         val job = exportJobRepository.findById(scope, jobId)
@@ -81,11 +72,7 @@ class ExportService(
         jobId: UUID,
         resourceType: String,
     ): Path {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = jobId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to download exports")
-        }
+        val decision = authorize(principal, PolicyOperation.READ, "Not authorized to download exports", resourceId = jobId)
 
         val scope = tenantScope(principal)
         val file = exportJobRepository.findById(scope, jobId)
@@ -115,16 +102,17 @@ class ExportService(
         return path
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
-    ) = policyEvaluator.evaluate(
+        forbiddenMessage: String,
+        resourceId: UUID? = null,
+    ) = accessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.EXPORT,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-        ),
+        resourceType = PolicyResourceType.EXPORT,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

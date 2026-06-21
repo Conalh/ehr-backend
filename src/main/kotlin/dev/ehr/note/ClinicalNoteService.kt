@@ -8,7 +8,7 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
-import dev.ehr.security.ClinicalAccessAuthorizer
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class ClinicalNoteService(
-    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val clinicalNoteRepository: ClinicalNoteRepository,
     private val encounterRepository: EncounterRepository,
@@ -265,7 +265,7 @@ class ClinicalNoteService(
         patientId: java.util.UUID? = null,
         resourceId: java.util.UUID? = null,
         forbiddenMessage: String,
-    ) = clinicalAccessAuthorizer.authorize(
+    ) = accessAuthorizer.authorize(
         principal = principal,
         resourceType = PolicyResourceType.NOTE,
         operation = operation,
@@ -278,7 +278,7 @@ class ClinicalNoteService(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = clinicalAccessAuthorizer.evaluate(
+    ) = accessAuthorizer.evaluate(
         principal = principal,
         resourceType = PolicyResourceType.NOTE,
         operation = operation,

@@ -3,11 +3,10 @@ package dev.ehr.provenance
 import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -18,7 +17,7 @@ import java.util.UUID
 
 @Service
 class ProvenanceQueryService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val provenanceRepository: ProvenanceRepository,
     private val patientRepository: PatientRepository,
@@ -27,11 +26,7 @@ class ProvenanceQueryService(
         principal: SecurityPrincipal,
         provenanceId: UUID,
     ): ProvenanceEvent {
-        val decision = evaluate(principal)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = provenanceId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
-        }
+        val decision = authorize(principal, resourceId = provenanceId)
 
         val event = provenanceRepository.findById(tenantScope(principal), provenanceId)
         if (event == null) {
@@ -46,15 +41,11 @@ class ProvenanceQueryService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, event.patientId)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = event.patientId,
-                resourceId = event.id,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            patientId = event.patientId,
+            resourceId = event.id,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -70,25 +61,21 @@ class ProvenanceQueryService(
         targetResourceType: String,
         targetResourceId: UUID,
     ): List<ProvenanceEvent> {
-        val decision = evaluate(principal)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = targetResourceId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
-        }
+        val decision = authorize(principal, resourceId = targetResourceId)
 
         val events = provenanceRepository.findByTarget(tenantScope(principal), targetResourceType, targetResourceId)
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
         val patientId = events.firstOrNull()?.patientId
-        val compartmentDecision = if (patientId != null) evaluate(principal, patientId) else decision
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = patientId,
-                resourceId = targetResourceId,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
-        }
+        val compartmentDecision = patientId
+            ?.let {
+                authorize(
+                    principal = principal,
+                    patientId = it,
+                    resourceId = targetResourceId,
+                )
+            }
+            ?: decision
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.SEARCH,
@@ -111,11 +98,7 @@ class ProvenanceQueryService(
         targetResourceType: String,
         targetResourceIds: List<UUID>,
     ): List<ProvenanceEvent> {
-        val decision = evaluate(principal, patientId)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
-        }
+        val decision = authorize(principal, patientId = patientId)
 
         val events = provenanceRepository.findByTargets(
             tenantScope(principal),
@@ -135,11 +118,7 @@ class ProvenanceQueryService(
         principal: SecurityPrincipal,
         patientId: UUID,
     ): List<ProvenanceEvent> {
-        val decision = evaluate(principal, patientId)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read provenance")
-        }
+        val decision = authorize(principal, patientId = patientId)
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, PatientId(patientId)) == null) {
@@ -162,17 +141,17 @@ class ProvenanceQueryService(
         return events
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         patientId: UUID? = null,
-    ) = policyEvaluator.evaluate(
+        resourceId: UUID? = null,
+    ) = accessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.PROVENANCE,
-            operation = PolicyOperation.READ,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.PROVENANCE,
+        operation = PolicyOperation.READ,
+        forbiddenMessage = "Not authorized to read provenance",
+        patientId = patientId,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

@@ -8,7 +8,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.ClinicalAccessAuthorizer
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -20,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class MedicationStatementService(
-    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val medicationStatementRepository: MedicationStatementRepository,
     private val patientRepository: PatientRepository,
@@ -157,7 +157,7 @@ class MedicationStatementService(
         patientId: java.util.UUID? = null,
         resourceId: java.util.UUID? = null,
         forbiddenMessage: String,
-    ) = clinicalAccessAuthorizer.authorize(
+    ) = accessAuthorizer.authorize(
         principal = principal,
         resourceType = PolicyResourceType.MEDICATION,
         operation = operation,

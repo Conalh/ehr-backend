@@ -5,11 +5,10 @@ import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OAuthClientType
 import dev.ehr.identity.TenantScope
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -32,7 +31,7 @@ data class RegisteredOAuthClient(
 
 @Service
 class OAuthClientService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val oauthClientRepository: OAuthClientRepository,
     private val passwordEncoder: PasswordEncoder,
@@ -53,11 +52,7 @@ class OAuthClientService(
         grantedScopes: String,
         redirectUris: String,
     ): RegisteredOAuthClient {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to register clients")
-        }
+        val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to register clients")
         if (clientIdentifier.isBlank() || displayName.isBlank()) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Client identifier and display name must not be blank")
         }
@@ -118,11 +113,7 @@ class OAuthClientService(
         principal: SecurityPrincipal,
         clientId: OAuthClientId,
     ): OAuthClient {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = clientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read clients")
-        }
+        val decision = authorize(principal, PolicyOperation.READ, "Not authorized to read clients", resourceId = clientId.value)
 
         val client = oauthClientRepository.findById(tenantScope(principal), clientId)
         if (client == null) {
@@ -145,11 +136,7 @@ class OAuthClientService(
     }
 
     fun list(principal: SecurityPrincipal): List<OAuthClient> {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to list clients")
-        }
+        val decision = authorize(principal, PolicyOperation.READ, "Not authorized to list clients")
 
         val clients = oauthClientRepository.findByOrganization(tenantScope(principal))
         auditEventService.recordResourceAccess(
@@ -164,11 +151,7 @@ class OAuthClientService(
         principal: SecurityPrincipal,
         clientId: OAuthClientId,
     ): OAuthClient {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = clientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to revoke clients")
-        }
+        val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to revoke clients", resourceId = clientId.value)
 
         val scope = tenantScope(principal)
         val existing = oauthClientRepository.findById(scope, clientId)
@@ -195,16 +178,17 @@ class OAuthClientService(
         }!!
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
-    ) = policyEvaluator.evaluate(
+        forbiddenMessage: String,
+        resourceId: java.util.UUID? = null,
+    ) = accessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.OAUTH_CLIENT,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-        ),
+        resourceType = PolicyResourceType.OAUTH_CLIENT,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

@@ -6,7 +6,7 @@ import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @Service
-class ClinicalAccessAuthorizer(
+class AccessAuthorizer(
     private val policyEvaluator: PolicyEvaluator,
     private val auditEventService: AuditEventService,
 ) {

@@ -5,11 +5,10 @@ import dev.ehr.identity.TenantScope
 import dev.ehr.identity.UserId
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -21,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class CareTeamService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val careTeamRepository: CareTeamRepository,
     private val patientRepository: PatientRepository,
@@ -34,11 +33,12 @@ class CareTeamService(
         userId: UserId,
         role: CareTeamRole,
     ): CareTeamMembership {
-        val decision = evaluate(principal, PolicyOperation.WRITE, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to manage care teams")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to manage care teams",
+            patientId = patientId.value,
+        )
         if (membershipRepository.findActiveByOrganizationAndUser(
                 principal.organization.organizationId,
                 userId,
@@ -77,11 +77,12 @@ class CareTeamService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<CareTeamMembership> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read care teams")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read care teams",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -108,11 +109,12 @@ class CareTeamService(
         principal: SecurityPrincipal,
         membershipId: CareTeamMembershipId,
     ): CareTeamMembership {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = membershipId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to manage care teams")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to manage care teams",
+            resourceId = membershipId.value,
+        )
 
         val scope = tenantScope(principal)
         val existing = careTeamRepository.findById(scope, membershipId)
@@ -128,15 +130,13 @@ class CareTeamService(
 
         // Re-evaluate with the discovered patient: launch-bound tokens are
         // denied outside their patient context here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, existing.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = existing.patientId.value,
-                resourceId = membershipId.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to manage care teams")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to manage care teams",
+            patientId = existing.patientId.value,
+            resourceId = membershipId.value,
+        )
 
         return transactionTemplate.execute {
             val ended = careTeamRepository.end(scope, membershipId)
@@ -152,18 +152,19 @@ class CareTeamService(
         }!!
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
+        forbiddenMessage: String,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+        resourceId: java.util.UUID? = null,
+    ) = accessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.CARE_TEAM,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.CARE_TEAM,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

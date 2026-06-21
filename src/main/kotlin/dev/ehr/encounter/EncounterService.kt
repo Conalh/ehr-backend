@@ -7,13 +7,12 @@ import dev.ehr.careteam.CareTeamRole
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceRecorder
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -25,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class EncounterService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val encounterRepository: EncounterRepository,
     private val patientRepository: PatientRepository,
@@ -38,11 +37,12 @@ class EncounterService(
         patientId: PatientId,
         command: EncounterCreateCommand,
     ): Encounter {
-        val decision = evaluate(principal, PolicyOperation.WRITE, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to open encounters")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to open encounters",
+            patientId = patientId.value,
+        )
         if (command.status != EncounterStatus.PLANNED && command.status != EncounterStatus.IN_PROGRESS) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
@@ -91,11 +91,12 @@ class EncounterService(
         principal: SecurityPrincipal,
         encounterId: EncounterId,
     ): Encounter {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = encounterId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read encounters")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read encounters",
+            resourceId = encounterId.value,
+        )
 
         val encounter = encounterRepository.findById(tenantScope(principal), encounterId)
         if (encounter == null) {
@@ -110,15 +111,13 @@ class EncounterService(
 
         // Re-evaluate with the discovered patient: launch-bound tokens are
         // denied outside their patient context here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, encounter.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = encounter.patientId.value,
-                resourceId = encounter.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read encounters")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read encounters",
+            patientId = encounter.patientId.value,
+            resourceId = encounter.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -133,11 +132,12 @@ class EncounterService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Encounter> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read encounters")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read encounters",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -165,11 +165,12 @@ class EncounterService(
         encounterId: EncounterId,
         command: EncounterTransitionCommand,
     ): Encounter {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = encounterId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to update encounters")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to update encounters",
+            resourceId = encounterId.value,
+        )
 
         val scope = tenantScope(principal)
         try {
@@ -237,18 +238,30 @@ class EncounterService(
         )
     }
 
+    private fun authorize(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+        forbiddenMessage: String,
+        patientId: java.util.UUID? = null,
+        resourceId: java.util.UUID? = null,
+    ) = accessAuthorizer.authorize(
+        principal = principal,
+        resourceType = PolicyResourceType.ENCOUNTER,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
+    )
+
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+    ) = accessAuthorizer.evaluate(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.ENCOUNTER,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.ENCOUNTER,
+        operation = operation,
+        patientId = patientId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

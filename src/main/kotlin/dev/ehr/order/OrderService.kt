@@ -9,7 +9,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.ClinicalAccessAuthorizer
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.PolicyOperation
@@ -24,7 +24,7 @@ import java.util.UUID
 
 @Service
 class OrderService(
-    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val orderRepository: OrderRepository,
     private val patientRepository: PatientRepository,
@@ -240,7 +240,7 @@ class OrderService(
         patientId: UUID? = null,
         resourceId: UUID? = null,
         forbiddenMessage: String,
-    ) = clinicalAccessAuthorizer.authorize(
+    ) = accessAuthorizer.authorize(
         principal = principal,
         resourceType = PolicyResourceType.ORDER,
         operation = operation,
@@ -253,7 +253,7 @@ class OrderService(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: UUID? = null,
-    ) = clinicalAccessAuthorizer.evaluate(
+    ) = accessAuthorizer.evaluate(
         principal = principal,
         resourceType = PolicyResourceType.ORDER,
         operation = operation,

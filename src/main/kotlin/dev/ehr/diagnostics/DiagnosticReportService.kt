@@ -15,7 +15,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.ClinicalAccessAuthorizer
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -28,7 +28,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class DiagnosticReportService(
-    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val diagnosticReportRepository: DiagnosticReportRepository,
     private val orderRepository: OrderRepository,
@@ -226,7 +226,7 @@ class DiagnosticReportService(
         patientId: java.util.UUID? = null,
         resourceId: java.util.UUID? = null,
         forbiddenMessage: String,
-    ) = clinicalAccessAuthorizer.authorize(
+    ) = accessAuthorizer.authorize(
         principal = principal,
         resourceType = PolicyResourceType.DIAGNOSTIC_REPORT,
         operation = operation,

@@ -1,11 +1,10 @@
 package dev.ehr.patient
 
 import dev.ehr.identity.TenantScope
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.provenance.ProvenanceRecorder
@@ -25,7 +24,7 @@ data class PatientWithIdentifiers(
 
 @Service
 class PatientService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val patientRepository: PatientRepository,
     private val provenanceRecorder: ProvenanceRecorder,
@@ -36,11 +35,7 @@ class PatientService(
         command: PatientCreateCommand,
         identifierCommands: List<PatientIdentifierCreateCommand>,
     ): PatientWithIdentifiers {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to create patients")
-        }
+        val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to create patients")
         identifierCommands.forEach(::validateIdentifierCommand)
 
         val tenantScope = tenantScope(principal)
@@ -117,11 +112,7 @@ class PatientService(
         identifierSystem: String?,
         identifierValue: String?,
     ): List<PatientWithIdentifiers> {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to search patients")
-        }
+        val decision = authorize(principal, PolicyOperation.READ, "Not authorized to search patients")
 
         val tenantScope = tenantScope(principal)
         // A launch-bound principal only ever sees the launched patient,
@@ -158,14 +149,22 @@ class PatientService(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: UUID? = null,
-    ) = policyEvaluator.evaluate(
+    ) = accessAuthorizer.evaluate(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.PATIENT,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.PATIENT,
+        operation = operation,
+        patientId = patientId,
+    )
+
+    private fun authorize(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+        forbiddenMessage: String,
+    ) = accessAuthorizer.authorize(
+        principal = principal,
+        resourceType = PolicyResourceType.PATIENT,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

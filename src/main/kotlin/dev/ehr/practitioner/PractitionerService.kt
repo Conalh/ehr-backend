@@ -4,11 +4,10 @@ import dev.ehr.identity.Practitioner
 import dev.ehr.identity.PractitionerId
 import dev.ehr.identity.PractitionerRepository
 import dev.ehr.identity.TenantScope
+import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -18,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class PractitionerService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val accessAuthorizer: AccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val practitionerRepository: PractitionerRepository,
 ) {
@@ -26,18 +25,13 @@ class PractitionerService(
         principal: SecurityPrincipal,
         practitionerId: PractitionerId,
     ): Practitioner {
-        val decision = policyEvaluator.evaluate(
+        val decision = accessAuthorizer.authorize(
             principal = principal,
-            request = PolicyEvaluationRequest(
-                resourceType = PolicyResourceType.PRACTITIONER,
-                operation = PolicyOperation.READ,
-                organizationId = principal.organization.organizationId,
-            ),
+            resourceType = PolicyResourceType.PRACTITIONER,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read practitioners",
+            resourceId = practitionerId.value,
         )
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = practitionerId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read practitioners")
-        }
 
         val practitioner = practitionerRepository.findByIdInOrganization(
             TenantScope(principal.organization.organizationId),
