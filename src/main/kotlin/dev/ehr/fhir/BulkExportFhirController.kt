@@ -3,7 +3,6 @@ package dev.ehr.fhir
 import com.fasterxml.jackson.annotation.JsonProperty
 import dev.ehr.export.ExportJobStatus
 import dev.ehr.export.ExportService
-import dev.ehr.security.SecurityPrincipal
 import org.hl7.fhir.r4.model.OperationOutcome
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -31,6 +30,7 @@ import java.util.UUID
 class BulkExportFhirController(
     private val exportService: ExportService,
     private val responses: FhirResponseFactory,
+    private val requestSupport: FhirRequestSupport,
 ) {
     @GetMapping("/\$export")
     fun kickoff(
@@ -39,7 +39,7 @@ class BulkExportFhirController(
         @RequestParam(name = "_type", required = false) type: String?,
         @RequestParam(name = "_since", required = false) since: String?,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
+        val principal = requestSupport.securityPrincipal(authentication)
         if (prefer?.contains("respond-async") != true) {
             return responses.operationOutcome(
                 HttpStatus.BAD_REQUEST,
@@ -77,7 +77,7 @@ class BulkExportFhirController(
         authentication: Authentication,
         @PathVariable jobId: UUID,
     ): ResponseEntity<*> {
-        val principal = securityPrincipal(authentication)
+        val principal = requestSupport.securityPrincipal(authentication)
         return try {
             val (job, files) = exportService.status(principal, jobId)
             when (job.status) {
@@ -125,10 +125,6 @@ class BulkExportFhirController(
             .path("/fhir/r4/\$export-status/{jobId}")
             .buildAndExpand(jobId)
             .toUriString()
-
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class BulkExportOutput(

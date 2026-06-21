@@ -2,7 +2,6 @@ package dev.ehr.fhir
 
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientService
-import dev.ehr.security.SecurityPrincipal
 import org.hl7.fhir.r4.model.Bundle
 import org.hl7.fhir.r4.model.OperationOutcome
 import org.springframework.http.HttpStatus
@@ -15,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
-import java.util.UUID
 
 @RestController
 @RequestMapping("/fhir/r4")
@@ -23,13 +21,14 @@ class PatientFhirController(
     private val patientService: PatientService,
     private val patientFhirMapper: PatientFhirMapper,
     private val responses: FhirResponseFactory,
+    private val requestSupport: FhirRequestSupport,
 ) {
     @GetMapping("/Patient/{id}", produces = [FHIR_JSON])
     fun read(
         authentication: Authentication,
         @PathVariable id: String,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
+        val principal = requestSupport.securityPrincipal(authentication)
         val patientId = parsePatientId(id)
             ?: return responses.operationOutcome(
                 HttpStatus.NOT_FOUND,
@@ -51,7 +50,7 @@ class PatientFhirController(
         @RequestParam identifier: String?,
         @RequestParam(name = "_id") id: String?,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
+        val principal = requestSupport.securityPrincipal(authentication)
 
         return try {
             val patientId = id?.let(::parsePatientId)
@@ -103,7 +102,7 @@ class PatientFhirController(
             val fhirPatient = patientFhirMapper.toFhirPatient(result)
             bundle.addEntry(
                 Bundle.BundleEntryComponent()
-                    .setFullUrl(patientFullUrl(fhirPatient.idElement.idPart))
+                    .setFullUrl(requestSupport.resourceFullUrl("Patient", fhirPatient.idElement.idPart))
                     .setResource(fhirPatient)
                     .setSearch(
                         Bundle.BundleEntrySearchComponent()
@@ -114,12 +113,8 @@ class PatientFhirController(
         return bundle
     }
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
-
     private fun parsePatientId(id: String): PatientId? =
-        runCatching { PatientId(UUID.fromString(id)) }.getOrNull()
+        requestSupport.parseUuid(id)?.let(::PatientId)
 
     private fun parseIdentifierToken(identifier: String?): Pair<String, String>? {
         if (identifier == null) {
@@ -137,9 +132,4 @@ class PatientFhirController(
         return system to value
     }
 
-    private fun patientFullUrl(idPart: String): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/Patient/{id}")
-            .buildAndExpand(idPart)
-            .toUriString()
 }

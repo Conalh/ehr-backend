@@ -1,7 +1,6 @@
 package dev.ehr.fhir
 
 import dev.ehr.provenance.ProvenanceQueryService
-import dev.ehr.security.SecurityPrincipal
 import org.hl7.fhir.r4.model.Bundle
 import org.hl7.fhir.r4.model.OperationOutcome
 import org.springframework.http.HttpStatus
@@ -22,14 +21,15 @@ class ProvenanceFhirController(
     private val provenanceQueryService: ProvenanceQueryService,
     private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
+    private val requestSupport: FhirRequestSupport,
 ) {
     @GetMapping("/Provenance/{id}", produces = [FHIR_JSON])
     fun read(
         authentication: Authentication,
         @PathVariable id: String,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val provenanceId = parseUuid(id)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val provenanceId = requestSupport.parseUuid(id)
             ?: return responses.operationOutcome(
                 HttpStatus.NOT_FOUND,
                 OperationOutcome.IssueType.NOTFOUND,
@@ -50,7 +50,7 @@ class ProvenanceFhirController(
         @RequestParam target: String?,
         @RequestParam patient: String?,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
+        val principal = requestSupport.securityPrincipal(authentication)
 
         return try {
             val events = when {
@@ -64,13 +64,13 @@ class ProvenanceFhirController(
                     provenanceQueryService.searchByTarget(principal, parsed.first, parsed.second)
                 }
                 patient != null -> {
-                    val patientId = parseUuid(patient.removePrefix("Patient/"))
+                    val patientId = requestSupport.parsePatientParam(patient)
                         ?: return responses.operationOutcome(
                             HttpStatus.BAD_REQUEST,
                             OperationOutcome.IssueType.INVALID,
                             "The patient search parameter must be a logical id or Patient/{id} reference",
                         )
-                    provenanceQueryService.searchByPatient(principal, patientId)
+                    provenanceQueryService.searchByPatient(principal, patientId.value)
                 }
                 else -> return responses.operationOutcome(
                     HttpStatus.BAD_REQUEST,
@@ -91,7 +91,7 @@ class ProvenanceFhirController(
                 val fhirProvenance = provenanceFhirMapper.toFhirProvenance(event)
                 bundle.addEntry(
                     Bundle.BundleEntryComponent()
-                        .setFullUrl(provenanceFullUrl(fhirProvenance.idElement.idPart))
+                        .setFullUrl(requestSupport.resourceFullUrl("Provenance", fhirProvenance.idElement.idPart))
                         .setResource(fhirProvenance)
                         .setSearch(
                             Bundle.BundleEntrySearchComponent()
@@ -112,20 +112,7 @@ class ProvenanceFhirController(
         }
         val internalType = ProvenanceFhirMapper.internalTypeFor(target.substring(0, separatorIndex))
             ?: return null
-        val targetId = parseUuid(target.substring(separatorIndex + 1)) ?: return null
+        val targetId = requestSupport.parseUuid(target.substring(separatorIndex + 1)) ?: return null
         return internalType to targetId
     }
-
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
-
-    private fun parseUuid(value: String): UUID? =
-        runCatching { UUID.fromString(value) }.getOrNull()
-
-    private fun provenanceFullUrl(idPart: String): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/Provenance/{id}")
-            .buildAndExpand(idPart)
-            .toUriString()
 }
