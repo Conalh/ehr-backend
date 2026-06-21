@@ -1,12 +1,16 @@
 package dev.ehr.export
 
 import ca.uhn.fhir.context.FhirContext
+import dev.ehr.careteam.CareTeamMembershipOrigin
+import dev.ehr.careteam.CareTeamRepository
+import dev.ehr.careteam.CareTeamRole
 import dev.ehr.condition.ConditionCreateCommand
 import dev.ehr.condition.ConditionRepository
 import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.MembershipRole
 import dev.ehr.identity.Organization
 import dev.ehr.identity.OrganizationRepository
+import dev.ehr.identity.PractitionerRepository
 import dev.ehr.identity.TenantScope
 import dev.ehr.identity.User
 import dev.ehr.identity.UserRepository
@@ -20,8 +24,10 @@ import dev.ehr.testsupport.DevJwtFactory
 import dev.ehr.testsupport.DevJwtTestConfiguration
 import dev.ehr.testsupport.PostgresIntegrationTest
 import dev.ehr.testsupport.TerminologyTestFixtures
+import org.hl7.fhir.r4.model.CareTeam
 import org.hl7.fhir.r4.model.Condition
 import org.hl7.fhir.r4.model.Patient
+import org.hl7.fhir.r4.model.Practitioner
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -56,6 +62,12 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
 
     @Autowired
     lateinit var conditionRepository: ConditionRepository
+
+    @Autowired
+    lateinit var careTeamRepository: CareTeamRepository
+
+    @Autowired
+    lateinit var practitionerRepository: PractitionerRepository
 
     @Autowired
     lateinit var exportJobRepository: ExportJobRepository
@@ -106,6 +118,26 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
                 codeConceptId = snomedConcept.id,
             ),
         )
+        val practitionerUser = createPractitionerUser()
+        val practitioner = practitionerRepository.create(
+            userId = practitionerUser.id,
+            displayName = "Export Practitioner ${UUID.randomUUID()}",
+            npi = "export-npi-${UUID.randomUUID()}",
+        )
+        val practitionerMembership = membershipRepository.create(
+            organizationId = member.organization.id,
+            userId = practitionerUser.id,
+            practitionerId = practitioner.id,
+        )
+        membershipRepository.addRole(practitionerMembership.id, MembershipRole.CLINICIAN)
+        careTeamRepository.addMember(
+            organizationId = member.organization.id,
+            patientId = patient.id,
+            userId = practitionerUser.id,
+            role = CareTeamRole.ATTENDING,
+            origin = CareTeamMembershipOrigin.EXPLICIT,
+            createdBy = member.user.id,
+        )
 
         // request
         val response = mockMvc.post("/api/v1/export-jobs") {
@@ -140,9 +172,11 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
         }.andExpect {
             status { isOk() }
             jsonPath("$.status") { value("completed") }
-            jsonPath("$.files.length()") { value(9) }
+            jsonPath("$.files.length()") { value(11) }
             jsonPath("$.files[?(@.resourceType=='Patient')].resourceCount") { value(1) }
             jsonPath("$.files[?(@.resourceType=='Condition')].resourceCount") { value(1) }
+            jsonPath("$.files[?(@.resourceType=='CareTeam')].resourceCount") { value(1) }
+            jsonPath("$.files[?(@.resourceType=='Practitioner')].resourceCount") { value(1) }
         }
 
         // file-creation audits from the async worker carry the requester
@@ -156,7 +190,7 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
             member.organization.id.value,
             member.user.id.value,
         )
-        assertEquals(9, fileAuditCount)
+        assertEquals(11, fileAuditCount)
 
         // download Patient ndjson: every line parses as Patient, only this org's data
         val patientNdjson = mockMvc.get("/api/v1/export-jobs/$jobId/files/Patient") {
@@ -178,6 +212,24 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
         assertEquals(1, conditionLines.size)
         fhirContext.newJsonParser().parseResource(Condition::class.java, conditionLines[0])
 
+        val careTeamNdjson = mockMvc.get("/api/v1/export-jobs/$jobId/files/CareTeam") {
+            header("Authorization", "Bearer ${member.token}")
+        }.andReturn().response.contentAsString
+        val careTeamLines = careTeamNdjson.trim().lines().filter { it.isNotBlank() }
+        assertEquals(1, careTeamLines.size)
+        val parsedCareTeam = fhirContext.newJsonParser().parseResource(CareTeam::class.java, careTeamLines[0])
+        assertEquals(patient.id.value.toString(), parsedCareTeam.idElement.idPart)
+        assertEquals(1, parsedCareTeam.participant.size)
+
+        val practitionerNdjson = mockMvc.get("/api/v1/export-jobs/$jobId/files/Practitioner") {
+            header("Authorization", "Bearer ${member.token}")
+        }.andReturn().response.contentAsString
+        val practitionerLines = practitionerNdjson.trim().lines().filter { it.isNotBlank() }
+        assertEquals(1, practitionerLines.size)
+        val parsedPractitioner = fhirContext.newJsonParser()
+            .parseResource(Practitioner::class.java, practitionerLines[0])
+        assertEquals(practitioner.id.value.toString(), parsedPractitioner.idElement.idPart)
+
         val downloadAudit = auditRow(downloadCorrelationId)
         assertEquals("EXPORT", downloadAudit.operation)
         assertEquals("SUCCESS", downloadAudit.outcome)
@@ -185,6 +237,7 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
         // the other organization's data never leaked into this export
         assertTrue(otherOrganization.id != member.organization.id)
         assertTrue(!patientNdjson.contains(otherOrganization.id.value.toString()))
+        assertTrue(!practitionerNdjson.contains("Other Practitioner"))
     }
 
     @Test
@@ -250,7 +303,30 @@ class ExportApiIntegrationTest : PostgresIntegrationTest() {
                 familyName = "Patient",
             ),
         )
+        val practitionerUser = createPractitionerUser(prefix = "other-practitioner")
+        val practitioner = practitionerRepository.create(
+            userId = practitionerUser.id,
+            displayName = "Other Practitioner $suffix",
+            npi = "other-npi-$suffix",
+        )
+        val membership = membershipRepository.create(
+            organizationId = organization.id,
+            userId = practitionerUser.id,
+            practitionerId = practitioner.id,
+        )
+        membershipRepository.addRole(membership.id, MembershipRole.CLINICIAN)
         return organization
+    }
+
+    private fun createPractitionerUser(
+        prefix: String = "export-practitioner",
+    ): User {
+        val suffix = UUID.randomUUID()
+        return userRepository.create(
+            externalSubject = "$prefix-$suffix",
+            email = "$prefix-$suffix@example.test",
+            displayName = "Export Practitioner User $suffix",
+        )
     }
 
     private fun createMember(

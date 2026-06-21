@@ -7,12 +7,11 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -24,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class ConditionService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val conditionRepository: ConditionRepository,
     private val patientRepository: PatientRepository,
@@ -36,11 +35,12 @@ class ConditionService(
         principal: SecurityPrincipal,
         command: ConditionCreateCommand,
     ): Condition {
-        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record conditions")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to record conditions",
+            patientId = command.patientId.value,
+        )
         if (command.onsetDate != null && command.abatementDate != null && command.abatementDate < command.onsetDate) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Abatement date must not be before onset date")
         }
@@ -88,11 +88,12 @@ class ConditionService(
         abatementDate: java.time.LocalDate?,
         expectedVersion: Int,
     ): Condition {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = conditionId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to update conditions")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to update conditions",
+            resourceId = conditionId.value,
+        )
 
         val scope = tenantScope(principal)
         try {
@@ -182,11 +183,12 @@ class ConditionService(
         principal: SecurityPrincipal,
         conditionId: ConditionId,
     ): Condition {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = conditionId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read conditions")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read conditions",
+            resourceId = conditionId.value,
+        )
 
         val condition = conditionRepository.findById(tenantScope(principal), conditionId)
         if (condition == null) {
@@ -201,15 +203,13 @@ class ConditionService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, condition.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = condition.patientId.value,
-                resourceId = condition.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read conditions")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read conditions",
+            patientId = condition.patientId.value,
+            resourceId = condition.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -224,11 +224,12 @@ class ConditionService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Condition> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read conditions")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read conditions",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -251,18 +252,30 @@ class ConditionService(
         return conditions
     }
 
+    private fun authorize(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
+        resourceId: java.util.UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
+        principal = principal,
+        resourceType = PolicyResourceType.CONDITION,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
+    )
+
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+    ) = clinicalAccessAuthorizer.evaluate(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.CONDITION,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.CONDITION,
+        operation = operation,
+        patientId = patientId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

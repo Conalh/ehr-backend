@@ -8,12 +8,11 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -26,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class ClinicalNoteService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val clinicalNoteRepository: ClinicalNoteRepository,
     private val encounterRepository: EncounterRepository,
@@ -41,11 +40,12 @@ class ClinicalNoteService(
         title: String,
         contentText: String,
     ): ClinicalNote {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = encounterId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to write clinical notes")
-        }
+        authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to write clinical notes",
+            resourceId = encounterId.value,
+        )
         if (title.isBlank() || contentText.isBlank()) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Note title and content must not be blank")
         }
@@ -55,15 +55,13 @@ class ClinicalNoteService(
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, encounter.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = encounter.patientId.value,
-                resourceId = encounter.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to write clinical notes")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to write clinical notes",
+            patientId = encounter.patientId.value,
+            resourceId = encounter.id.value,
+        )
 
         try {
             return transactionTemplate.execute {
@@ -105,11 +103,12 @@ class ClinicalNoteService(
         contentText: String?,
         expectedVersion: Int,
     ): ClinicalNote {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = noteId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to amend clinical notes")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to amend clinical notes",
+            resourceId = noteId.value,
+        )
         if (title == null && contentText == null) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "An amendment must change the title or content")
         }
@@ -191,11 +190,12 @@ class ClinicalNoteService(
         principal: SecurityPrincipal,
         noteId: ClinicalNoteId,
     ): ClinicalNote {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = noteId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read clinical notes")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read clinical notes",
+            resourceId = noteId.value,
+        )
 
         val note = clinicalNoteRepository.findById(tenantScope(principal), noteId)
         if (note == null) {
@@ -210,15 +210,13 @@ class ClinicalNoteService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, note.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = note.patientId.value,
-                resourceId = note.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read clinical notes")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read clinical notes",
+            patientId = note.patientId.value,
+            resourceId = note.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -233,11 +231,12 @@ class ClinicalNoteService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<ClinicalNote> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read clinical notes")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read clinical notes",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -260,18 +259,30 @@ class ClinicalNoteService(
         return notes
     }
 
+    private fun authorize(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
+        resourceId: java.util.UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
+        principal = principal,
+        resourceType = PolicyResourceType.NOTE,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
+    )
+
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+    ) = clinicalAccessAuthorizer.evaluate(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.NOTE,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.NOTE,
+        operation = operation,
+        patientId = patientId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

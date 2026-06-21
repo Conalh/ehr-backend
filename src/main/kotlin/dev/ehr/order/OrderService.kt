@@ -9,10 +9,9 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -25,7 +24,7 @@ import java.util.UUID
 
 @Service
 class OrderService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val orderRepository: OrderRepository,
     private val patientRepository: PatientRepository,
@@ -37,11 +36,12 @@ class OrderService(
         principal: SecurityPrincipal,
         command: OrderCreateCommand,
     ): Order {
-        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to place orders")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to place orders",
+            patientId = command.patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (command.encounterId != null) {
@@ -81,11 +81,12 @@ class OrderService(
         principal: SecurityPrincipal,
         orderId: OrderId,
     ): Order {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = orderId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read orders")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read orders",
+            resourceId = orderId.value,
+        )
 
         val order = orderRepository.findById(tenantScope(principal), orderId)
         if (order == null) {
@@ -100,15 +101,13 @@ class OrderService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, order.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = order.patientId.value,
-                resourceId = order.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read orders")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read orders",
+            patientId = order.patientId.value,
+            resourceId = order.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -123,11 +122,12 @@ class OrderService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Order> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read orders")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read orders",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -155,11 +155,12 @@ class OrderService(
         orderId: OrderId,
         command: OrderTransitionCommand,
     ): Order {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = orderId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to update orders")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to update orders",
+            resourceId = orderId.value,
+        )
 
         val scope = tenantScope(principal)
         try {
@@ -233,18 +234,30 @@ class OrderService(
         )
     }
 
+    private fun authorize(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+        patientId: UUID? = null,
+        resourceId: UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
+        principal = principal,
+        resourceType = PolicyResourceType.ORDER,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
+    )
+
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: UUID? = null,
-    ) = policyEvaluator.evaluate(
+    ) = clinicalAccessAuthorizer.evaluate(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.ORDER,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.ORDER,
+        operation = operation,
+        patientId = patientId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

@@ -2,10 +2,13 @@ package dev.ehr.export
 
 import ca.uhn.fhir.context.FhirContext
 import dev.ehr.allergy.AllergyRepository
+import dev.ehr.careteam.CareTeamMembership
+import dev.ehr.careteam.CareTeamRepository
 import dev.ehr.condition.ConditionRepository
 import dev.ehr.diagnostics.DiagnosticReportRepository
 import dev.ehr.encounter.EncounterRepository
 import dev.ehr.fhir.AllergyFhirMapper
+import dev.ehr.fhir.CareTeamFhirMapper
 import dev.ehr.fhir.ConditionFhirMapper
 import dev.ehr.fhir.DiagnosticReportFhirMapper
 import dev.ehr.fhir.DocumentReferenceFhirMapper
@@ -13,8 +16,13 @@ import dev.ehr.fhir.EncounterFhirMapper
 import dev.ehr.fhir.MedicationStatementFhirMapper
 import dev.ehr.fhir.ObservationFhirMapper
 import dev.ehr.fhir.PatientFhirMapper
+import dev.ehr.fhir.PractitionerFhirMapper
 import dev.ehr.fhir.ProvenanceFhirMapper
+import dev.ehr.identity.PractitionerRepository
 import dev.ehr.identity.TenantScope
+import dev.ehr.identity.User
+import dev.ehr.identity.UserId
+import dev.ehr.identity.UserRepository
 import dev.ehr.medication.MedicationStatementRepository
 import dev.ehr.note.ClinicalNoteRepository
 import dev.ehr.observation.ObservationRepository
@@ -53,7 +61,10 @@ class ExportJobProcessor(
     private val medicationStatementRepository: MedicationStatementRepository,
     private val clinicalNoteRepository: ClinicalNoteRepository,
     private val diagnosticReportRepository: DiagnosticReportRepository,
+    private val careTeamRepository: CareTeamRepository,
+    private val practitionerRepository: PractitionerRepository,
     private val provenanceRepository: ProvenanceRepository,
+    private val userRepository: UserRepository,
     private val codeableConceptRepository: CodeableConceptRepository,
     private val patientFhirMapper: PatientFhirMapper,
     private val encounterFhirMapper: EncounterFhirMapper,
@@ -63,6 +74,8 @@ class ExportJobProcessor(
     private val medicationStatementFhirMapper: MedicationStatementFhirMapper,
     private val documentReferenceFhirMapper: DocumentReferenceFhirMapper,
     private val diagnosticReportFhirMapper: DiagnosticReportFhirMapper,
+    private val careTeamFhirMapper: CareTeamFhirMapper,
+    private val practitionerFhirMapper: PractitionerFhirMapper,
     private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val fhirContext: FhirContext,
     private val properties: EhrProperties,
@@ -95,10 +108,7 @@ class ExportJobProcessor(
                 byType.getOrPut(type) { mutableListOf() }.add(resource)
             }
             // Every served type gets a file, even when empty.
-            listOf(
-                "Patient", "Encounter", "Condition", "AllergyIntolerance", "Observation",
-                "MedicationStatement", "DocumentReference", "DiagnosticReport", "Provenance",
-            ).forEach { byType[it] = mutableListOf() }
+            exportedResourceTypes.forEach { byType[it] = mutableListOf() }
 
             patientIds.forEach { patientId ->
                 val patient = patientRepository.findById(scope, patientId) ?: return@forEach
@@ -150,9 +160,17 @@ class ExportJobProcessor(
                         diagnosticReportFhirMapper.toFhirDiagnosticReport(report, concept(report.codeConceptId)),
                     )
                 }
+                val careTeamMemberships = careTeamRepository.findActiveByPatient(scope, patientId)
+                add(
+                    "CareTeam",
+                    careTeamFhirMapper.toFhirCareTeam(patientId, careTeamMemberships, usersFor(careTeamMemberships)),
+                )
                 provenanceRepository.findByPatient(scope, patientId.value).forEach { event ->
                     add("Provenance", provenanceFhirMapper.toFhirProvenance(event))
                 }
+            }
+            practitionerRepository.findByOrganization(scope).forEach { practitioner ->
+                add("Practitioner", practitionerFhirMapper.toFhirPractitioner(practitioner))
             }
 
             val jobDir = jobDirectory(job.id)
@@ -209,7 +227,18 @@ class ExportJobProcessor(
 
     fun jobDirectory(jobId: UUID): Path = Paths.get(properties.export.storageDir, jobId.toString())
 
-    private companion object {
-        val log = LoggerFactory.getLogger(ExportJobProcessor::class.java)!!
+    private fun usersFor(memberships: List<CareTeamMembership>): Map<UserId, User> =
+        memberships.map { it.userId }.distinct()
+            .mapNotNull { userRepository.findById(it) }
+            .associateBy { it.id }
+
+    internal companion object {
+        val exportedResourceTypes = listOf(
+            "Patient", "Encounter", "Condition", "AllergyIntolerance", "Observation",
+            "MedicationStatement", "DocumentReference", "DiagnosticReport", "CareTeam",
+            "Practitioner", "Provenance",
+        )
+
+        private val log = LoggerFactory.getLogger(ExportJobProcessor::class.java)!!
     }
 }

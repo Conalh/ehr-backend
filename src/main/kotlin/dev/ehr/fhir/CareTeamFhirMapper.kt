@@ -15,8 +15,8 @@ import java.util.Date
 
 /**
  * One CareTeam per patient compartment: the active memberships are the
- * participants. Members are referenced by identifier (the same convention
- * Provenance agents use) because Practitioner is not served.
+ * participants. Members are referenced by user identifier, matching the
+ * Provenance agent convention.
  */
 @Component
 class CareTeamFhirMapper {

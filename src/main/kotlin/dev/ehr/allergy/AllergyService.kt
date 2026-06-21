@@ -8,8 +8,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -21,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class AllergyService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val allergyRepository: AllergyRepository,
     private val patientRepository: PatientRepository,
@@ -33,11 +32,12 @@ class AllergyService(
         principal: SecurityPrincipal,
         command: AllergyCreateCommand,
     ): Allergy {
-        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record allergies")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to record allergies",
+            patientId = command.patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (command.encounterId != null) {
@@ -77,11 +77,12 @@ class AllergyService(
         principal: SecurityPrincipal,
         allergyId: AllergyId,
     ): Allergy {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = allergyId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read allergies")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read allergies",
+            resourceId = allergyId.value,
+        )
 
         val allergy = allergyRepository.findById(tenantScope(principal), allergyId)
         if (allergy == null) {
@@ -96,15 +97,13 @@ class AllergyService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, allergy.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = allergy.patientId.value,
-                resourceId = allergy.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read allergies")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read allergies",
+            patientId = allergy.patientId.value,
+            resourceId = allergy.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -119,11 +118,12 @@ class AllergyService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Allergy> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read allergies")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read allergies",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -146,18 +146,19 @@ class AllergyService(
         return allergies
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+        resourceId: java.util.UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.ALLERGY,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.ALLERGY,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

@@ -8,8 +8,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -21,7 +20,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class MedicationStatementService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val medicationStatementRepository: MedicationStatementRepository,
     private val patientRepository: PatientRepository,
@@ -33,11 +32,12 @@ class MedicationStatementService(
         principal: SecurityPrincipal,
         command: MedicationStatementCreateCommand,
     ): MedicationStatement {
-        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record medication statements")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to record medication statements",
+            patientId = command.patientId.value,
+        )
         if (command.effectiveStart != null && command.effectiveEnd != null &&
             command.effectiveEnd < command.effectiveStart
         ) {
@@ -82,11 +82,12 @@ class MedicationStatementService(
         principal: SecurityPrincipal,
         medicationStatementId: MedicationStatementId,
     ): MedicationStatement {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = medicationStatementId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read medication statements")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read medication statements",
+            resourceId = medicationStatementId.value,
+        )
 
         val statement = medicationStatementRepository.findById(tenantScope(principal), medicationStatementId)
         if (statement == null) {
@@ -101,15 +102,13 @@ class MedicationStatementService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, statement.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = statement.patientId.value,
-                resourceId = statement.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read medication statements")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read medication statements",
+            patientId = statement.patientId.value,
+            resourceId = statement.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -124,11 +123,12 @@ class MedicationStatementService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<MedicationStatement> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read medication statements")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read medication statements",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -151,18 +151,19 @@ class MedicationStatementService(
         return statements
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+        resourceId: java.util.UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.MEDICATION,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.MEDICATION,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

@@ -7,12 +7,11 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -24,7 +23,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class ObservationService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val observationRepository: ObservationRepository,
     private val patientRepository: PatientRepository,
@@ -36,11 +35,12 @@ class ObservationService(
         principal: SecurityPrincipal,
         command: ObservationCreateCommand,
     ): Observation {
-        val decision = evaluate(principal, PolicyOperation.WRITE, command.patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = command.patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to record observations")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to record observations",
+            patientId = command.patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (command.encounterId != null) {
@@ -82,11 +82,12 @@ class ObservationService(
         newValue: ObservationValue,
         expectedVersion: Int,
     ): Observation {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = observationId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to amend observations")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to amend observations",
+            resourceId = observationId.value,
+        )
 
         val scope = tenantScope(principal)
         try {
@@ -163,11 +164,12 @@ class ObservationService(
         principal: SecurityPrincipal,
         observationId: ObservationId,
     ): Observation {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = observationId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read observations")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read observations",
+            resourceId = observationId.value,
+        )
 
         val observation = observationRepository.findById(tenantScope(principal), observationId)
         if (observation == null) {
@@ -182,15 +184,13 @@ class ObservationService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, observation.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = observation.patientId.value,
-                resourceId = observation.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read observations")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read observations",
+            patientId = observation.patientId.value,
+            resourceId = observation.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -206,11 +206,12 @@ class ObservationService(
         patientId: PatientId,
         category: ObservationCategory? = null,
     ): List<Observation> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read observations")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read observations",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -233,18 +234,30 @@ class ObservationService(
         return observations
     }
 
+    private fun authorize(
+        principal: SecurityPrincipal,
+        operation: PolicyOperation,
+        patientId: java.util.UUID? = null,
+        resourceId: java.util.UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
+        principal = principal,
+        resourceType = PolicyResourceType.OBSERVATION,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
+    )
+
     private fun evaluate(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+    ) = clinicalAccessAuthorizer.evaluate(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.OBSERVATION,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.OBSERVATION,
+        operation = operation,
+        patientId = patientId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

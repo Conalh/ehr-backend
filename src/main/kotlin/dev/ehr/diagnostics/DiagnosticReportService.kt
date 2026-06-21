@@ -15,8 +15,7 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
 import dev.ehr.security.AuditOutcome
-import dev.ehr.security.PolicyEvaluationRequest
-import dev.ehr.security.PolicyEvaluator
+import dev.ehr.security.ClinicalAccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -29,7 +28,7 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class DiagnosticReportService(
-    private val policyEvaluator: PolicyEvaluator,
+    private val clinicalAccessAuthorizer: ClinicalAccessAuthorizer,
     private val auditEventService: AuditEventService,
     private val diagnosticReportRepository: DiagnosticReportRepository,
     private val orderRepository: OrderRepository,
@@ -47,11 +46,12 @@ class DiagnosticReportService(
         conclusionText: String?,
         encounterId: dev.ehr.encounter.EncounterId?,
     ): DiagnosticReport {
-        val decision = evaluate(principal, PolicyOperation.WRITE)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = orderId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to attach results")
-        }
+        authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to attach results",
+            resourceId = orderId.value,
+        )
         if (resultObservationIds.isEmpty()) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "At least one result observation is required")
         }
@@ -86,15 +86,13 @@ class DiagnosticReportService(
         }
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.WRITE, order.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = order.patientId.value,
-                resourceId = orderId.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to attach results")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.WRITE,
+            forbiddenMessage = "Not authorized to attach results",
+            patientId = order.patientId.value,
+            resourceId = orderId.value,
+        )
 
         try {
             return transactionTemplate.execute {
@@ -153,11 +151,12 @@ class DiagnosticReportService(
         principal: SecurityPrincipal,
         reportId: DiagnosticReportId,
     ): DiagnosticReport {
-        val decision = evaluate(principal, PolicyOperation.READ)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, resourceId = reportId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read diagnostic reports")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read diagnostic reports",
+            resourceId = reportId.value,
+        )
 
         val report = diagnosticReportRepository.findById(tenantScope(principal), reportId)
         if (report == null) {
@@ -172,15 +171,13 @@ class DiagnosticReportService(
 
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
-        val compartmentDecision = evaluate(principal, PolicyOperation.READ, report.patientId.value)
-        if (!compartmentDecision.allowed) {
-            auditEventService.recordDeniedAccess(
-                compartmentDecision,
-                patientId = report.patientId.value,
-                resourceId = report.id.value,
-            )
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read diagnostic reports")
-        }
+        val compartmentDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read diagnostic reports",
+            patientId = report.patientId.value,
+            resourceId = report.id.value,
+        )
         auditEventService.recordResourceAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
@@ -195,11 +192,12 @@ class DiagnosticReportService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<DiagnosticReport> {
-        val decision = evaluate(principal, PolicyOperation.READ, patientId.value)
-        if (!decision.allowed) {
-            auditEventService.recordDeniedAccess(decision, patientId = patientId.value)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read diagnostic reports")
-        }
+        val decision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read diagnostic reports",
+            patientId = patientId.value,
+        )
 
         val scope = tenantScope(principal)
         if (patientRepository.findById(scope, patientId) == null) {
@@ -222,18 +220,19 @@ class DiagnosticReportService(
         return reports
     }
 
-    private fun evaluate(
+    private fun authorize(
         principal: SecurityPrincipal,
         operation: PolicyOperation,
         patientId: java.util.UUID? = null,
-    ) = policyEvaluator.evaluate(
+        resourceId: java.util.UUID? = null,
+        forbiddenMessage: String,
+    ) = clinicalAccessAuthorizer.authorize(
         principal = principal,
-        request = PolicyEvaluationRequest(
-            resourceType = PolicyResourceType.DIAGNOSTIC_REPORT,
-            operation = operation,
-            organizationId = principal.organization.organizationId,
-            patientId = patientId,
-        ),
+        resourceType = PolicyResourceType.DIAGNOSTIC_REPORT,
+        operation = operation,
+        forbiddenMessage = forbiddenMessage,
+        patientId = patientId,
+        resourceId = resourceId,
     )
 
     private fun tenantScope(principal: SecurityPrincipal): TenantScope =

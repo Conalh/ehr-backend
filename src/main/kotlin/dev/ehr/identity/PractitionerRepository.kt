@@ -62,6 +62,20 @@ class PractitionerRepository(
             tenantScope.organizationId.value,
         ).singleOrNull()
 
+    fun findByOrganization(tenantScope: TenantScope): List<Practitioner> =
+        jdbcTemplate.query(
+            """
+            select distinct p.id, p.user_id, p.npi, p.display_name, p.status, p.created_at, p.updated_at
+            from practitioners p
+            join memberships m on m.user_id = p.user_id
+            where m.organization_id = ?
+              and m.status = 'active'
+            order by p.created_at, p.id
+            """.trimIndent(),
+            rowMapper,
+            tenantScope.organizationId.value,
+        )
+
     fun findByUserId(userId: UserId): Practitioner? =
         jdbcTemplate.query(
             """
