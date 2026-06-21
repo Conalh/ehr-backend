@@ -21,7 +21,7 @@ import java.util.UUID
  * Adapts oauth_clients to the authorization server. Clients are managed only
  * through the audited registration API. Grants follow the client type:
  * system clients get client_credentials; confidential and public clients get
- * the authorization-code flow (PKCE mandatory for public) with rotating
+ * the authorization-code flow with PKCE and rotating
  * refresh tokens — but only when they registered a redirect URI; a client
  * without one fails closed here.
  */
@@ -64,7 +64,6 @@ class EhrRegisteredClientRepository(
             .clientId(client.clientIdentifier)
             .clientSecret(secretHash)
             .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-            .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
             .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
             .tokenSettings(
                 TokenSettings.builder()
@@ -94,9 +93,9 @@ class EhrRegisteredClientRepository(
             .clientSettings(
                 ClientSettings.builder()
                     // First-party synthetic apps: no consent screen (recorded
-                    // AS2 decision 4). PKCE is mandatory for public clients.
+                    // AS2 decision 4). PKCE is mandatory for every code client.
                     .requireAuthorizationConsent(false)
-                    .requireProofKey(!confidential)
+                    .requireProofKey(true)
                     .build(),
             )
             .tokenSettings(
@@ -112,7 +111,6 @@ class EhrRegisteredClientRepository(
             builder
                 .clientSecret(client.secretHash)
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-                .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
         } else {
             builder.clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
         }

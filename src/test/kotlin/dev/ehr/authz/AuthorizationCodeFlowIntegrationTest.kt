@@ -259,6 +259,53 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `confidential clients require pkce and basic client authentication`() {
+        val fixture = createClinicianFixture()
+        val session = devLogin(fixture.user)
+        val confidentialRegistration = registerClientWithSecret(fixture, type = "CONFIDENTIAL")
+        val confidentialClient = confidentialRegistration.first
+        val secret = confidentialRegistration.second
+
+        val noPkceResult = mockMvc.get(
+            "/oauth/authorize?response_type=code&client_id={clientId}&redirect_uri={redirectUri}" +
+                "&scope={scope}&state={state}",
+            confidentialClient,
+            REDIRECT_URI,
+            "openid user/*.read",
+            "state-${UUID.randomUUID()}",
+        ) {
+            this.session = session
+        }.andExpect {
+            status { is3xxRedirection() }
+        }.andReturn()
+        assertTrue(
+            noPkceResult.response.redirectedUrl!!.contains("error="),
+            "confidential authorization-code clients must not receive codes without PKCE",
+        )
+
+        val verifier = "verifier-${UUID.randomUUID()}-${UUID.randomUUID()}"
+        val codeForPostSecret = authorize(session, confidentialClient, challengeFor(verifier))
+        mockMvc.post("/oauth/token") {
+            contentType = MediaType.APPLICATION_FORM_URLENCODED
+            content = "grant_type=authorization_code&code=$codeForPostSecret" +
+                "&redirect_uri=$REDIRECT_URI&client_id=$confidentialClient&client_secret=$secret" +
+                "&code_verifier=$verifier"
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+
+        val codeForMissingVerifier = authorize(session, confidentialClient, challengeFor(verifier))
+        mockMvc.post("/oauth/token") {
+            header("Authorization", basicAuth(confidentialClient, secret))
+            contentType = MediaType.APPLICATION_FORM_URLENCODED
+            content = "grant_type=authorization_code&code=$codeForMissingVerifier" +
+                "&redirect_uri=$REDIRECT_URI"
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
     fun `users with multiple organization memberships are refused as-issued tokens`() {
         val fixture = createClinicianFixture()
         val secondOrganization = organizationRepository.create(

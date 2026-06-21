@@ -20,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.server.ResponseStatusException
+import java.net.URI
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -42,6 +43,10 @@ class OAuthClientService(
     private companion object {
         // Non-clinical scopes a client may hold besides SMART resource scopes.
         val OIDC_SCOPES = setOf("openid", "fhirUser", "launch/patient")
+        val WHITESPACE = Regex("\\s+")
+        val IPV4_LOOPBACK = Regex("""127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}""")
+        const val MAX_REDIRECT_URIS = 10
+        const val MAX_REDIRECT_URI_LENGTH = 2048
     }
 
     fun register(
@@ -69,14 +74,7 @@ class OAuthClientService(
                 "SMART scope context is not allowed for this client type",
             )
         }
-        // Redirect URIs are optional at registration: a client without one is
-        // a directory entry that simply cannot run the authorization-code
-        // flow (the registered-client adapter fails it closed).
-        val normalizedRedirectUris = redirectUris.trim()
-        val redirectUriList = normalizedRedirectUris.split(" ").filter { it.isNotBlank() }
-        if (redirectUriList.any { !isAbsoluteHttpUri(it) }) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Redirect URIs must be absolute http(s) URIs")
-        }
+        val normalizedRedirectUris = normalizeRedirectUris(redirectUris)
 
         val clientSecret = if (clientType == OAuthClientType.PUBLIC) null else generateSecret()
         try {
@@ -102,11 +100,58 @@ class OAuthClientService(
         }
     }
 
-    private fun isAbsoluteHttpUri(value: String): Boolean =
-        runCatching {
-            val uri = java.net.URI(value)
-            (uri.scheme == "http" || uri.scheme == "https") && uri.host != null
-        }.getOrDefault(false)
+    private fun normalizeRedirectUris(raw: String): String {
+        val values = raw.trim().split(WHITESPACE).filter { it.isNotBlank() }
+        if (values.size > MAX_REDIRECT_URIS) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many redirect URIs")
+        }
+        if (values.distinct().size != values.size) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Redirect URIs must be unique")
+        }
+        values.forEach(::validateRedirectUri)
+        return values.joinToString(" ")
+    }
+
+    private fun validateRedirectUri(value: String) {
+        if (value.length > MAX_REDIRECT_URI_LENGTH) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Redirect URI is too long")
+        }
+        val uri = runCatching { URI(value) }.getOrNull()
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Redirect URI is malformed")
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host ?: throw ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "Redirect URIs must include a host",
+        )
+        if (uri.fragment != null || uri.userInfo != null) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Redirect URIs must not include fragments or user info",
+            )
+        }
+        when (scheme) {
+            "https" -> Unit
+            "http" -> {
+                if (!isLoopbackHost(host)) {
+                    throw ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "HTTP redirect URIs are allowed only for loopback hosts",
+                    )
+                }
+            }
+            else -> throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Redirect URIs must use https, except loopback http redirects for local clients",
+            )
+        }
+    }
+
+    private fun isLoopbackHost(host: String): Boolean {
+        val normalized = host.lowercase()
+        return normalized == "localhost" ||
+            normalized == "::1" ||
+            IPV4_LOOPBACK.matches(normalized)
+    }
 
     private fun generateSecret(): String {
         val bytes = ByteArray(32)

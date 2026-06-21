@@ -175,6 +175,58 @@ class OAuthClientApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `registration normalizes redirect uris and rejects unsafe values`() {
+        val admin = createMember(MembershipRole.ORG_ADMIN, "user/*.write user/*.read")
+        val identifier = "redirect-app-${UUID.randomUUID()}"
+
+        mockMvc.post("/api/v1/oauth-clients") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "clientIdentifier": "$identifier",
+                  "displayName": "Redirect App",
+                  "clientType": "PUBLIC",
+                  "grantedScopes": "openid user/*.read",
+                  "redirectUris": "  https://app.example.test/callback   http://127.0.0.1:5555/callback  "
+                }
+            """.trimIndent()
+            header("Authorization", "Bearer ${admin.token}")
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.redirectUris") {
+                value("https://app.example.test/callback http://127.0.0.1:5555/callback")
+            }
+        }
+
+        val unsafeValues = listOf(
+            "http://app.example.test/callback",
+            "https://app.example.test/callback#fragment",
+            "https://user@app.example.test/callback",
+            "/relative/callback",
+            "https://app.example.test/callback https://app.example.test/callback",
+            (1..11).joinToString(" ") { "https://app.example.test/callback/$it" },
+        )
+
+        unsafeValues.forEach { redirectUris ->
+            mockMvc.post("/api/v1/oauth-clients") {
+                contentType = MediaType.APPLICATION_JSON
+                content = """
+                    {
+                      "clientIdentifier": "redirect-bad-${UUID.randomUUID()}",
+                      "displayName": "Bad Redirect App",
+                      "clientType": "PUBLIC",
+                      "grantedScopes": "openid user/*.read",
+                      "redirectUris": "$redirectUris"
+                    }
+                """.trimIndent()
+                header("Authorization", "Bearer ${admin.token}")
+            }.andExpect {
+                status { isBadRequest() }
+            }
+        }
+    }
+
+    @Test
     fun `clinicians cannot manage clients and cross tenant reads fail closed`() {
         val deniedCorrelationId = "client-denied-${UUID.randomUUID()}"
         val admin = createMember(MembershipRole.ORG_ADMIN, "user/*.read user/*.write")

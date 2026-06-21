@@ -156,6 +156,12 @@ class BackendServicesAuthIntegrationTest : PostgresIntegrationTest() {
         }.andExpect {
             status { isUnauthorized() }
         }
+        mockMvc.post("/oauth/token") {
+            contentType = MediaType.APPLICATION_FORM_URLENCODED
+            content = "grant_type=client_credentials&client_id=$identifier&client_secret=$secret"
+        }.andExpect {
+            status { isUnauthorized() }
+        }
 
         // Public client: not registered for the grant at all.
         val publicIdentifier = "public-${UUID.randomUUID()}"

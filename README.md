@@ -101,7 +101,7 @@ Patient demographics and encounter scheduling stay org-wide by design (registrat
 ## Tests
 
 ```powershell
-.\gradlew.bat test    # 390 tests; Testcontainers needs Docker
+.\gradlew.bat test    # 392 tests; Testcontainers needs Docker
 ```
 
 The suite is integration-first: real Postgres via Testcontainers, MockMvc against the full security filter chain, audit rows asserted by correlation id, FHIR responses validated against the R4 core spec, and adversarial cases throughout — cross-tenant probes, stale-version conflicts, double state transitions, denied-access audit trails, break-glass without a reason, wrong PKCE verifiers, refresh-token reuse, cross-client launch selection reuse, and a patient-launched token probing another patient's chart. The OAuth flows are tested as full dances: login → picker → authorize → exchange → use → rotate → revoke.

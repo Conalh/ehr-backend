@@ -78,8 +78,9 @@ Client-credentials tokens have no user. Shape:
 
 - Access tokens: 5 minutes (SMART recommends short; everything re-validates
   cheaply via JWKS).
-- Refresh tokens: confidential + public-with-PKCE clients, rotating
-  (one-time-use, reuse detection revokes the family), 90-day absolute cap,
+- Refresh tokens: confidential and public authorization-code clients, with
+  PKCE required for both, rotating (one-time-use, reuse detection revokes the
+  family), 90-day absolute cap,
   revoked when the client is revoked — `oauth_clients.status` is already
   checked at identity resolution, so revocation is immediate even for live
   access tokens.
