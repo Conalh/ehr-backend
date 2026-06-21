@@ -1,7 +1,6 @@
 package dev.ehr.careteam
 
 import dev.ehr.identity.MembershipRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.identity.UserId
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
@@ -12,6 +11,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -84,7 +84,7 @@ class CareTeamService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -116,7 +116,7 @@ class CareTeamService(
             resourceId = membershipId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         val existing = careTeamRepository.findById(scope, membershipId)
             ?: run {
                 auditEventService.recordResourceAccess(
@@ -167,6 +167,4 @@ class CareTeamService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

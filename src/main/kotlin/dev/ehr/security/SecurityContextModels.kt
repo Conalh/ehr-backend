@@ -4,6 +4,7 @@ import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.MembershipId
 import dev.ehr.identity.MembershipRole
+import dev.ehr.identity.TenantScope
 import dev.ehr.identity.UserId
 import java.util.UUID
 
@@ -31,6 +32,9 @@ data class SecurityPrincipal(
     val organization: OrganizationContext,
     val membership: MembershipContext,
 )
+
+fun SecurityPrincipal.tenantScope(): TenantScope =
+    TenantScope(organization.organizationId)
 
 /**
  * The launched patient, when this principal's clinical access is bound to

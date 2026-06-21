@@ -1,7 +1,6 @@
 package dev.ehr.observation
 
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
@@ -15,6 +14,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -42,7 +42,7 @@ class ObservationService(
             patientId = command.patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (command.encounterId != null) {
             val encounter = encounterRepository.findById(scope, command.encounterId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
@@ -89,7 +89,7 @@ class ObservationService(
             resourceId = observationId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         try {
             return transactionTemplate.execute {
                 val prior = observationRepository.findById(scope, observationId)
@@ -171,7 +171,7 @@ class ObservationService(
             resourceId = observationId.value,
         )
 
-        val observation = observationRepository.findById(tenantScope(principal), observationId)
+        val observation = observationRepository.findById(principal.tenantScope(), observationId)
         if (observation == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -213,7 +213,7 @@ class ObservationService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -260,6 +260,4 @@ class ObservationService(
         patientId = patientId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

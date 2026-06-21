@@ -1,7 +1,6 @@
 package dev.ehr.medication
 
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceRecorder
@@ -12,6 +11,7 @@ import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -44,7 +44,7 @@ class MedicationStatementService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Effective end must not be before effective start")
         }
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (command.encounterId != null) {
             val encounter = encounterRepository.findById(scope, command.encounterId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
@@ -89,7 +89,7 @@ class MedicationStatementService(
             resourceId = medicationStatementId.value,
         )
 
-        val statement = medicationStatementRepository.findById(tenantScope(principal), medicationStatementId)
+        val statement = medicationStatementRepository.findById(principal.tenantScope(), medicationStatementId)
         if (statement == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -130,7 +130,7 @@ class MedicationStatementService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -166,6 +166,4 @@ class MedicationStatementService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

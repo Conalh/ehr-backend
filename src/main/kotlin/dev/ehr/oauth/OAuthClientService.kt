@@ -4,7 +4,6 @@ import dev.ehr.identity.OAuthClient
 import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OAuthClientType
-import dev.ehr.identity.TenantScope
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -12,6 +11,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import dev.ehr.security.SecurityScope
 import dev.ehr.security.SmartScope
 import org.springframework.dao.DuplicateKeyException
@@ -115,7 +115,7 @@ class OAuthClientService(
     ): OAuthClient {
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to read clients", resourceId = clientId.value)
 
-        val client = oauthClientRepository.findById(tenantScope(principal), clientId)
+        val client = oauthClientRepository.findById(principal.tenantScope(), clientId)
         if (client == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -138,7 +138,7 @@ class OAuthClientService(
     fun list(principal: SecurityPrincipal): List<OAuthClient> {
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to list clients")
 
-        val clients = oauthClientRepository.findByOrganization(tenantScope(principal))
+        val clients = oauthClientRepository.findByOrganization(principal.tenantScope())
         auditEventService.recordResourceAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
@@ -153,7 +153,7 @@ class OAuthClientService(
     ): OAuthClient {
         val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to revoke clients", resourceId = clientId.value)
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         val existing = oauthClientRepository.findById(scope, clientId)
         if (existing == null) {
             auditEventService.recordResourceAccess(
@@ -191,6 +191,4 @@ class OAuthClientService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

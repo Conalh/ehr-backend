@@ -6,7 +6,6 @@ import dev.ehr.condition.Condition
 import dev.ehr.condition.ConditionRepository
 import dev.ehr.encounter.Encounter
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.medication.MedicationStatement
 import dev.ehr.medication.MedicationStatementRepository
 import dev.ehr.note.ClinicalNote
@@ -23,6 +22,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -61,7 +61,7 @@ class ChartService(
             patientId = patientId.value,
         )
 
-        val scope = TenantScope(principal.organization.organizationId)
+        val scope = principal.tenantScope()
         val patient = patientRepository.findById(scope, patientId)
         if (patient == null) {
             auditEventService.recordResourceAccess(

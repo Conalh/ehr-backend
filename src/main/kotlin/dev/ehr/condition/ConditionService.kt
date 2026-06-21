@@ -1,7 +1,6 @@
 package dev.ehr.condition
 
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
@@ -15,6 +14,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -45,7 +45,7 @@ class ConditionService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Abatement date must not be before onset date")
         }
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (command.encounterId != null) {
             val encounter = encounterRepository.findById(scope, command.encounterId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
@@ -95,7 +95,7 @@ class ConditionService(
             resourceId = conditionId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         try {
             return transactionTemplate.execute {
                 val prior = conditionRepository.findById(scope, conditionId)
@@ -190,7 +190,7 @@ class ConditionService(
             resourceId = conditionId.value,
         )
 
-        val condition = conditionRepository.findById(tenantScope(principal), conditionId)
+        val condition = conditionRepository.findById(principal.tenantScope(), conditionId)
         if (condition == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -231,7 +231,7 @@ class ConditionService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -278,6 +278,4 @@ class ConditionService(
         patientId = patientId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

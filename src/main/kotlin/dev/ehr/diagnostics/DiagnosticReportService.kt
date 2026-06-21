@@ -1,7 +1,6 @@
 package dev.ehr.diagnostics
 
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.observation.ObservationId
 import dev.ehr.observation.ObservationRepository
 import dev.ehr.order.OrderId
@@ -19,6 +18,7 @@ import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import dev.ehr.terminology.CodeableConceptId
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -59,7 +59,7 @@ class DiagnosticReportService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Conclusion text must not be blank")
         }
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         val order = orderRepository.findById(scope, orderId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found")
         if (order.status != OrderStatus.ACTIVE) {
@@ -158,7 +158,7 @@ class DiagnosticReportService(
             resourceId = reportId.value,
         )
 
-        val report = diagnosticReportRepository.findById(tenantScope(principal), reportId)
+        val report = diagnosticReportRepository.findById(principal.tenantScope(), reportId)
         if (report == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -199,7 +199,7 @@ class DiagnosticReportService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -235,6 +235,4 @@ class DiagnosticReportService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

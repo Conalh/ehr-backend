@@ -1,6 +1,5 @@
 package dev.ehr.provenance
 
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.security.AccessAuthorizer
@@ -10,6 +9,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -28,7 +28,7 @@ class ProvenanceQueryService(
     ): ProvenanceEvent {
         val decision = authorize(principal, resourceId = provenanceId)
 
-        val event = provenanceRepository.findById(tenantScope(principal), provenanceId)
+        val event = provenanceRepository.findById(principal.tenantScope(), provenanceId)
         if (event == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -63,7 +63,7 @@ class ProvenanceQueryService(
     ): List<ProvenanceEvent> {
         val decision = authorize(principal, resourceId = targetResourceId)
 
-        val events = provenanceRepository.findByTarget(tenantScope(principal), targetResourceType, targetResourceId)
+        val events = provenanceRepository.findByTarget(principal.tenantScope(), targetResourceType, targetResourceId)
         // Re-evaluate with the discovered patient: in enforced organizations
         // a missing treatment relationship denies here.
         val patientId = events.firstOrNull()?.patientId
@@ -101,7 +101,7 @@ class ProvenanceQueryService(
         val decision = authorize(principal, patientId = patientId)
 
         val events = provenanceRepository.findByTargets(
-            tenantScope(principal),
+            principal.tenantScope(),
             targetResourceType,
             targetResourceIds,
         )
@@ -120,7 +120,7 @@ class ProvenanceQueryService(
     ): List<ProvenanceEvent> {
         val decision = authorize(principal, patientId = patientId)
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, PatientId(patientId)) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -154,6 +154,4 @@ class ProvenanceQueryService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

@@ -1,6 +1,5 @@
 package dev.ehr.encounter
 
-import dev.ehr.identity.TenantScope
 import dev.ehr.careteam.CareTeamMembershipOrigin
 import dev.ehr.careteam.CareTeamRepository
 import dev.ehr.careteam.CareTeamRole
@@ -16,6 +15,7 @@ import dev.ehr.security.PolicyDecision
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -98,7 +98,7 @@ class EncounterService(
             resourceId = encounterId.value,
         )
 
-        val encounter = encounterRepository.findById(tenantScope(principal), encounterId)
+        val encounter = encounterRepository.findById(principal.tenantScope(), encounterId)
         if (encounter == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -139,7 +139,7 @@ class EncounterService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -172,7 +172,7 @@ class EncounterService(
             resourceId = encounterId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         try {
             return transactionTemplate.execute {
                 val prior = encounterRepository.findById(scope, encounterId)
@@ -264,8 +264,6 @@ class EncounterService(
         patientId = patientId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 
     private class EncounterNotFoundForTransition : RuntimeException()
 }

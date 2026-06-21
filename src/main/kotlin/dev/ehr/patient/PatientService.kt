@@ -1,6 +1,5 @@
 package dev.ehr.patient
 
-import dev.ehr.identity.TenantScope
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -9,6 +8,7 @@ import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import dev.ehr.security.launchBoundPatientId
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
@@ -38,7 +38,7 @@ class PatientService(
         val decision = authorize(principal, PolicyOperation.WRITE, "Not authorized to create patients")
         identifierCommands.forEach(::validateIdentifierCommand)
 
-        val tenantScope = tenantScope(principal)
+        val tenantScope = principal.tenantScope()
         try {
             return transactionTemplate.execute {
                 val patient = patientRepository.create(command)
@@ -75,7 +75,7 @@ class PatientService(
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not authorized to read patients")
         }
 
-        val tenantScope = tenantScope(principal)
+        val tenantScope = principal.tenantScope()
         val patient = patientRepository.findById(tenantScope, patientId)
         if (patient == null) {
             // Existence is unconfirmed, so the requested UUID is recorded as the
@@ -114,7 +114,7 @@ class PatientService(
     ): List<PatientWithIdentifiers> {
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to search patients")
 
-        val tenantScope = tenantScope(principal)
+        val tenantScope = principal.tenantScope()
         // A launch-bound principal only ever sees the launched patient,
         // even through search parameters.
         val launchBound = principal.launchBoundPatientId()
@@ -167,8 +167,6 @@ class PatientService(
         forbiddenMessage = forbiddenMessage,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 
     private fun validateIdentifierCommand(command: PatientIdentifierCreateCommand) {
         if (command.assignerText != null && command.assignerText.isBlank()) {

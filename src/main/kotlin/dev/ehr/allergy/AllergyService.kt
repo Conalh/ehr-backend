@@ -1,7 +1,6 @@
 package dev.ehr.allergy
 
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceRecorder
@@ -12,6 +11,7 @@ import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -39,7 +39,7 @@ class AllergyService(
             patientId = command.patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (command.encounterId != null) {
             val encounter = encounterRepository.findById(scope, command.encounterId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
@@ -84,7 +84,7 @@ class AllergyService(
             resourceId = allergyId.value,
         )
 
-        val allergy = allergyRepository.findById(tenantScope(principal), allergyId)
+        val allergy = allergyRepository.findById(principal.tenantScope(), allergyId)
         if (allergy == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -125,7 +125,7 @@ class AllergyService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -161,6 +161,4 @@ class AllergyService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

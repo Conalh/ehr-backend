@@ -3,7 +3,6 @@ package dev.ehr.practitioner
 import dev.ehr.identity.Practitioner
 import dev.ehr.identity.PractitionerId
 import dev.ehr.identity.PractitionerRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -11,6 +10,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -34,7 +34,7 @@ class PractitionerService(
         )
 
         val practitioner = practitionerRepository.findByIdInOrganization(
-            TenantScope(principal.organization.organizationId),
+            principal.tenantScope(),
             practitionerId,
         )
         if (practitioner == null) {

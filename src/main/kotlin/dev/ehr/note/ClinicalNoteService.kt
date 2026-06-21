@@ -2,7 +2,6 @@ package dev.ehr.note
 
 import dev.ehr.encounter.EncounterId
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
@@ -16,6 +15,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import dev.ehr.terminology.CodeableConceptId
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -50,7 +50,7 @@ class ClinicalNoteService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Note title and content must not be blank")
         }
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         val encounter = encounterRepository.findById(scope, encounterId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
         // Re-evaluate with the discovered patient: in enforced organizations
@@ -116,7 +116,7 @@ class ClinicalNoteService(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Note title and content must not be blank")
         }
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         try {
             return transactionTemplate.execute {
                 val prior = clinicalNoteRepository.findById(scope, noteId)
@@ -197,7 +197,7 @@ class ClinicalNoteService(
             resourceId = noteId.value,
         )
 
-        val note = clinicalNoteRepository.findById(tenantScope(principal), noteId)
+        val note = clinicalNoteRepository.findById(principal.tenantScope(), noteId)
         if (note == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -238,7 +238,7 @@ class ClinicalNoteService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -285,6 +285,4 @@ class ClinicalNoteService(
         patientId = patientId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

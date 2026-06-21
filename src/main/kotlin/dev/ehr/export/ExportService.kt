@@ -1,6 +1,5 @@
 package dev.ehr.export
 
-import dev.ehr.identity.TenantScope
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
@@ -8,6 +7,7 @@ import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -46,7 +46,7 @@ class ExportService(
     ): Pair<ExportJob, List<ExportJobFile>> {
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to read exports", resourceId = jobId)
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         val job = exportJobRepository.findById(scope, jobId)
         if (job == null) {
             auditEventService.recordResourceAccess(
@@ -74,7 +74,7 @@ class ExportService(
     ): Path {
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to download exports", resourceId = jobId)
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         val file = exportJobRepository.findById(scope, jobId)
             ?.let { exportJobRepository.findFiles(scope, jobId) }
             ?.singleOrNull { it.resourceType == resourceType }
@@ -115,6 +115,4 @@ class ExportService(
         resourceId = resourceId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 }

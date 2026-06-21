@@ -1,7 +1,6 @@
 package dev.ehr.order
 
 import dev.ehr.encounter.EncounterRepository
-import dev.ehr.identity.TenantScope
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceActivity
@@ -15,6 +14,7 @@ import dev.ehr.security.PolicyDecision
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.tenantScope
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -43,7 +43,7 @@ class OrderService(
             patientId = command.patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (command.encounterId != null) {
             val encounter = encounterRepository.findById(scope, command.encounterId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
@@ -88,7 +88,7 @@ class OrderService(
             resourceId = orderId.value,
         )
 
-        val order = orderRepository.findById(tenantScope(principal), orderId)
+        val order = orderRepository.findById(principal.tenantScope(), orderId)
         if (order == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -129,7 +129,7 @@ class OrderService(
             patientId = patientId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
             auditEventService.recordResourceAccess(
                 decision = decision,
@@ -162,7 +162,7 @@ class OrderService(
             resourceId = orderId.value,
         )
 
-        val scope = tenantScope(principal)
+        val scope = principal.tenantScope()
         try {
             return transactionTemplate.execute {
                 val prior = orderRepository.findById(scope, orderId)
@@ -260,8 +260,6 @@ class OrderService(
         patientId = patientId,
     )
 
-    private fun tenantScope(principal: SecurityPrincipal): TenantScope =
-        TenantScope(principal.organization.organizationId)
 
     private class OrderNotFoundForTransition : RuntimeException()
 }
