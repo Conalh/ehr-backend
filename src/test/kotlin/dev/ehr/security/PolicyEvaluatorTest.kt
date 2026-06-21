@@ -60,12 +60,12 @@ class PolicyEvaluatorTest {
     }
 
     @Test
-    fun `allows system admin organization read with compatible system scope`() {
+    fun `allows system admin organization read with compatible user scope`() {
         val organizationId = OrganizationId(UUID.randomUUID())
         val principal = principal(
             organizationId = organizationId,
             roles = listOf(MembershipRole.SYSTEM_ADMIN),
-            scopes = "system/*.read",
+            scopes = "user/*.read",
         )
 
         val decision = evaluator.evaluate(
@@ -75,8 +75,74 @@ class PolicyEvaluatorTest {
 
         assertTrue(decision.allowed)
         assertEquals(listOf(MembershipRole.SYSTEM_ADMIN), decision.roleBasis)
-        assertEquals(listOf("system/*.read"), decision.scopeBasis.map { it.rawValue })
+        assertEquals(listOf("user/*.read"), decision.scopeBasis.map { it.rawValue })
         assertEquals(PolicyReasonCode.ALLOWED, decision.reasonCode)
+    }
+
+    @Test
+    fun `user principals cannot authorize with system scopes`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val principal = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.ORG_ADMIN),
+            scopes = "system/*.read",
+        )
+
+        val decision = evaluator.evaluate(
+            principal = principal,
+            request = organizationReadRequest(organizationId),
+        )
+
+        assertFalse(decision.allowed)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, decision.reasonCode)
+        assertEquals(emptyList<SecurityScope>(), decision.scopeBasis)
+    }
+
+    @Test
+    fun `system principals cannot authorize with user scopes`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val principal = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.SYSTEM_APP),
+            scopes = "user/*.read user/*.write",
+            userId = null,
+        )
+
+        val decision = evaluator.evaluate(
+            principal = principal,
+            request = PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.EXPORT,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+            ),
+        )
+
+        assertFalse(decision.allowed)
+        assertEquals(PolicyReasonCode.INSUFFICIENT_SCOPE, decision.reasonCode)
+        assertEquals(emptyList<SecurityScope>(), decision.scopeBasis)
+    }
+
+    @Test
+    fun `system principals authorize exports with system scopes`() {
+        val organizationId = OrganizationId(UUID.randomUUID())
+        val principal = principal(
+            organizationId = organizationId,
+            roles = listOf(MembershipRole.SYSTEM_APP),
+            scopes = "system/*.read",
+            userId = null,
+        )
+
+        val decision = evaluator.evaluate(
+            principal = principal,
+            request = PolicyEvaluationRequest(
+                resourceType = PolicyResourceType.EXPORT,
+                operation = PolicyOperation.READ,
+                organizationId = organizationId,
+            ),
+        )
+
+        assertTrue(decision.allowed)
+        assertEquals(listOf("system/*.read"), decision.scopeBasis.map { it.rawValue })
     }
 
     @Test
@@ -196,7 +262,7 @@ class PolicyEvaluatorTest {
             PolicyOperation.READ to "user/Patient.read",
             PolicyOperation.READ to "user/*.read",
             PolicyOperation.WRITE to "user/Patient.write",
-            PolicyOperation.WRITE to "system/*.write",
+            PolicyOperation.WRITE to "user/*.write",
         ).forEach { (operation, scope) ->
             val organizationId = OrganizationId(UUID.randomUUID())
             val principal = principal(
@@ -697,8 +763,9 @@ class PolicyEvaluatorTest {
         val systemPrincipal = principal(
             organizationId = organizationId,
             roles = listOf(MembershipRole.CLINICIAN),
-            scopes = "user/*.read",
-        ).let { it.copy(subject = it.subject.copy(userId = null)) }
+            scopes = "system/*.read",
+            userId = null,
+        )
 
         val decision = evaluator(
             relationshipResolver = untouchableResolver,
@@ -749,11 +816,12 @@ class PolicyEvaluatorTest {
         roles: List<MembershipRole>,
         scopes: String,
         launchPatientId: UUID? = null,
+        userId: UserId? = UserId(UUID.randomUUID()),
     ): SecurityPrincipal =
         SecurityPrincipal(
             subject = AuthenticatedSubject(
                 externalSubject = "subject-${UUID.randomUUID()}",
-                userId = UserId(UUID.randomUUID()),
+                userId = userId,
                 clientId = OAuthClientId(UUID.randomUUID()),
                 scopes = SecurityScope.parse(scopes),
                 launchPatientId = launchPatientId,

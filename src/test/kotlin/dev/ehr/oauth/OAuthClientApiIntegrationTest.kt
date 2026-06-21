@@ -139,6 +139,42 @@ class OAuthClientApiIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `registration rejects smart scope contexts incompatible with client type`() {
+        val admin = createMember(MembershipRole.ORG_ADMIN, "user/*.write user/*.read")
+
+        mockMvc.post("/api/v1/oauth-clients") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "clientIdentifier": "system-bad-${UUID.randomUUID()}",
+                  "displayName": "Bad System App",
+                  "clientType": "SYSTEM",
+                  "grantedScopes": "user/*.read"
+                }
+            """.trimIndent()
+            header("Authorization", "Bearer ${admin.token}")
+        }.andExpect {
+            status { isBadRequest() }
+        }
+
+        mockMvc.post("/api/v1/oauth-clients") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """
+                {
+                  "clientIdentifier": "public-bad-${UUID.randomUUID()}",
+                  "displayName": "Bad User App",
+                  "clientType": "PUBLIC",
+                  "grantedScopes": "system/*.read",
+                  "redirectUris": "https://app.example.test/callback"
+                }
+            """.trimIndent()
+            header("Authorization", "Bearer ${admin.token}")
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
     fun `clinicians cannot manage clients and cross tenant reads fail closed`() {
         val deniedCorrelationId = "client-denied-${UUID.randomUUID()}"
         val admin = createMember(MembershipRole.ORG_ADMIN, "user/*.read user/*.write")

@@ -49,6 +49,18 @@ class OAuthClientRepository(
             clientIdentifier,
         ).singleOrNull()
 
+    /** Identity-level lookup for authorization-server registered client IDs. */
+    fun findById(clientId: OAuthClientId): OAuthClient? =
+        jdbcTemplate.query(
+            """
+            select $COLUMNS
+            from oauth_clients
+            where id = ?
+            """.trimIndent(),
+            rowMapper,
+            clientId.value,
+        ).singleOrNull()
+
     fun findById(
         tenantScope: TenantScope,
         clientId: OAuthClientId,

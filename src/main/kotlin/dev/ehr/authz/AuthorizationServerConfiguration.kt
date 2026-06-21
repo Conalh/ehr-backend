@@ -6,13 +6,19 @@ import com.nimbusds.jose.jwk.source.ImmutableJWKSet
 import com.nimbusds.jose.jwk.source.JWKSource
 import com.nimbusds.jose.proc.SecurityContext
 import dev.ehr.identity.MembershipRepository
+import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientRepository
+import dev.ehr.identity.OAuthClientStatus
+import dev.ehr.identity.OAuthClientType
 import dev.ehr.identity.PractitionerRepository
+import dev.ehr.identity.TenantScope
 import dev.ehr.identity.UserRepository
 import dev.ehr.identity.UserStatus
 import dev.ehr.runtime.EhrProperties
 import dev.ehr.security.JwtClaimNames
 import dev.ehr.security.JwtPrincipalAuthenticationConverter
+import dev.ehr.security.SecurityScope
+import dev.ehr.security.SmartScopeCompatibility
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.annotation.Order
@@ -251,7 +257,20 @@ class AuthorizationServerConfiguration {
             when (context.authorizationGrantType) {
                 AuthorizationGrantType.CLIENT_CREDENTIALS -> {
                     val client = oauthClientRepository.findByClientIdentifier(context.registeredClient.clientId)
-                        ?: return@OAuth2TokenCustomizer
+                        ?: invalidRequest("Registered client is unknown")
+                    if (client.status != OAuthClientStatus.ACTIVE) {
+                        invalidRequest("Registered client is not active")
+                    }
+                    if (client.clientType != OAuthClientType.SYSTEM) {
+                        invalidRequest("Only system clients can issue client-credentials tokens")
+                    }
+                    if (!SmartScopeCompatibility.areAllowedForClientType(
+                            SecurityScope.parse(client.grantedScopes),
+                            client.clientType,
+                        )
+                    ) {
+                        invalidRequest("Registered client has incompatible SMART scope contexts")
+                    }
                     context.claims.claim(
                         JwtPrincipalAuthenticationConverter.SYSTEM_PRINCIPAL_CLAIM,
                         JwtPrincipalAuthenticationConverter.SYSTEM_PRINCIPAL_VALUE,
@@ -259,6 +278,7 @@ class AuthorizationServerConfiguration {
                     client.organizationId?.let {
                         context.claims.claim(JwtClaimNames.ORGANIZATION_ID, it.value.toString())
                     }
+                    context.claims.claim(JwtClaimNames.CLIENT_ID, client.id.value.toString())
                     context.claims.claim(JwtClaimNames.SCOPE, context.authorizedScopes.joinToString(" "))
                 }
                 AuthorizationGrantType.AUTHORIZATION_CODE, AuthorizationGrantType.REFRESH_TOKEN -> {
@@ -275,10 +295,31 @@ class AuthorizationServerConfiguration {
                         )
                         else -> memberships.first()
                     }
+                    val clientId = runCatching {
+                        OAuthClientId(UUID.fromString(context.registeredClient.id))
+                    }.getOrElse {
+                        invalidRequest("Registered client ID is not an internal OAuth client UUID")
+                    }
+                    val client = oauthClientRepository.findById(TenantScope(membership.organizationId), clientId)
+                        ?: invalidRequest("Registered client is not linked to the token organization")
+                    if (client.status != OAuthClientStatus.ACTIVE) {
+                        invalidRequest("Registered client is not active")
+                    }
+                    if (client.clientType == OAuthClientType.SYSTEM) {
+                        invalidRequest("System clients cannot issue user tokens")
+                    }
+                    if (!SmartScopeCompatibility.areAllowedForClientType(
+                            SecurityScope.parse(client.grantedScopes),
+                            client.clientType,
+                        )
+                    ) {
+                        invalidRequest("Registered client has incompatible SMART scope contexts")
+                    }
                     context.claims.claim(
                         JwtClaimNames.ORGANIZATION_ID,
                         membership.organizationId.value.toString(),
                     )
+                    context.claims.claim(JwtClaimNames.CLIENT_ID, client.id.value.toString())
                     context.claims.claim(JwtClaimNames.SCOPE, context.authorizedScopes.joinToString(" "))
                     // SMART launch context rides in the authorization (stamped
                     // at code issuance) and binds the token to one patient.

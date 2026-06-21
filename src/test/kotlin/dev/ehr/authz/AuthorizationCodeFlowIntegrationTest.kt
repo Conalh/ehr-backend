@@ -145,6 +145,47 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `revoking a public client kills its live user access token`() {
+        val fixture = createClinicianFixture()
+        val registration = registerClientResponse(fixture, type = "PUBLIC")
+        val clientIdentifier = registration["clientIdentifier"].asText()
+        val clientId = registration["id"].asText()
+        val verifier = "verifier-${UUID.randomUUID()}-${UUID.randomUUID()}"
+        val session = devLogin(fixture.user)
+        val code = authorize(session, clientIdentifier, challengeFor(verifier))
+        val tokens = exchangeCode(clientIdentifier, code, verifier)
+        val accessToken = tokens["access_token"].asText()
+
+        val claims = jwtPayload(accessToken)
+        assertEquals(clientId, claims["client_id"].asText())
+
+        val patient = patientRepository.create(
+            PatientCreateCommand(
+                organizationId = fixture.organization.id,
+                givenName = "Client",
+                familyName = "Revocation",
+            ),
+        )
+        mockMvc.get("/api/v1/patients/${patient.id.value}/conditions") {
+            header("Authorization", "Bearer $accessToken")
+        }.andExpect {
+            status { isOk() }
+        }
+
+        mockMvc.post("/api/v1/oauth-clients/$clientId/revoke") {
+            header("Authorization", "Bearer ${fixture.adminToken}")
+        }.andExpect {
+            status { isOk() }
+        }
+
+        mockMvc.get("/api/v1/patients/${patient.id.value}/conditions") {
+            header("Authorization", "Bearer $accessToken")
+        }.andExpect {
+            status { isUnauthorized() }
+        }
+    }
+
+    @Test
     fun `wrong verifiers fail and confidential clients can revoke their refresh tokens`() {
         val fixture = createClinicianFixture()
         val publicClient = registerClient(fixture, type = "PUBLIC")
@@ -320,8 +361,17 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
         fixture: ClinicianFixture,
         type: String,
     ): Pair<String, String?> {
+        val response = registerClientResponse(fixture, type)
+        val secret = response["clientSecret"]?.takeIf { !it.isNull }?.asText()
+        return response["clientIdentifier"].asText() to secret
+    }
+
+    private fun registerClientResponse(
+        fixture: ClinicianFixture,
+        type: String,
+    ): com.fasterxml.jackson.databind.JsonNode {
         val identifier = "asc-app-${UUID.randomUUID()}"
-        val response = objectMapper.readTree(
+        return objectMapper.readTree(
             mockMvc.post("/api/v1/oauth-clients") {
                 contentType = MediaType.APPLICATION_JSON
                 content = """
@@ -338,8 +388,6 @@ class AuthorizationCodeFlowIntegrationTest : PostgresIntegrationTest() {
                 status { isCreated() }
             }.andReturn().response.contentAsString,
         )
-        val secret = response["clientSecret"]?.takeIf { !it.isNull }?.asText()
-        return identifier to secret
     }
 
     private fun challengeFor(verifier: String): String =

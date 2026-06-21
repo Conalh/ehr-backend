@@ -3,7 +3,7 @@ package dev.ehr.security
 import dev.ehr.identity.MembershipRepository
 import dev.ehr.identity.MembershipRole
 import dev.ehr.identity.MembershipStatus
-import dev.ehr.identity.OAuthClientId
+import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OrganizationRepository
 import dev.ehr.identity.OrganizationStatus
 import dev.ehr.identity.UserRepository
@@ -36,6 +36,9 @@ class DevJwtAuthenticationIntegrationTest : PostgresIntegrationTest() {
 
     @Autowired
     lateinit var membershipRepository: MembershipRepository
+
+    @Autowired
+    lateinit var oauthClientRepository: OAuthClientRepository
 
     @Autowired
     lateinit var jdbcTemplate: JdbcTemplate
@@ -78,11 +81,16 @@ class DevJwtAuthenticationIntegrationTest : PostgresIntegrationTest() {
         )
         membershipRepository.addRole(membership.id, MembershipRole.CLINICIAN)
         membershipRepository.addRole(membership.id, MembershipRole.ORG_ADMIN)
-        val clientId = OAuthClientId(UUID.randomUUID())
+        val clientId = oauthClientRepository.create(
+            organizationId = organization.id,
+            clientIdentifier = "dev-auth-client-$suffix",
+            displayName = "Dev Auth Client $suffix",
+            grantedScopes = "user/*.read patient/Patient.rs",
+        ).id
         val token = DevJwtFactory(jwtEncoder).tokenFor(
             user = user,
             organization = organization,
-            scopes = "user/*.read patient/Patient.rs system/*.read",
+            scopes = "user/*.read patient/Patient.rs",
             clientId = clientId,
         )
 
@@ -98,7 +106,6 @@ class DevJwtAuthenticationIntegrationTest : PostgresIntegrationTest() {
             jsonPath("$.roles[1]") { value("ORG_ADMIN") }
             jsonPath("$.scopes[0]") { value("user/*.read") }
             jsonPath("$.scopes[1]") { value("patient/Patient.rs") }
-            jsonPath("$.scopes[2]") { value("system/*.read") }
             jsonPath("$.clientId") { value(clientId.value.toString()) }
         }
 

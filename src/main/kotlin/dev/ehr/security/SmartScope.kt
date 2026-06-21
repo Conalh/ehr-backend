@@ -1,5 +1,7 @@
 package dev.ehr.security
 
+import dev.ehr.identity.OAuthClientType
+
 enum class SmartContext {
     PATIENT,
     USER,
@@ -61,4 +63,35 @@ data class SmartScope(
             )
         }
     }
+}
+
+object SmartScopeCompatibility {
+    fun isAllowedForClientType(
+        scope: SecurityScope,
+        clientType: OAuthClientType,
+    ): Boolean {
+        val smartScope = SmartScope.parse(scope.rawValue) ?: return true
+        return when (clientType) {
+            OAuthClientType.SYSTEM -> smartScope.context == SmartContext.SYSTEM
+            OAuthClientType.PUBLIC,
+            OAuthClientType.CONFIDENTIAL,
+            -> smartScope.context != SmartContext.SYSTEM
+        }
+    }
+
+    fun areAllowedForClientType(
+        scopes: List<SecurityScope>,
+        clientType: OAuthClientType,
+    ): Boolean =
+        scopes.all { isAllowedForClientType(it, clientType) }
+
+    fun isCompatibleWithPrincipal(
+        smartScope: SmartScope,
+        principal: SecurityPrincipal,
+    ): Boolean =
+        when (smartScope.context) {
+            SmartContext.SYSTEM -> principal.subject.userId == null
+            SmartContext.USER -> principal.subject.userId != null
+            SmartContext.PATIENT -> principal.subject.userId != null && principal.subject.launchPatientId != null
+        }
 }

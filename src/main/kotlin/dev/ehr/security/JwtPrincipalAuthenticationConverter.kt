@@ -6,6 +6,7 @@ import dev.ehr.identity.MembershipRole
 import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OAuthClientStatus
+import dev.ehr.identity.OAuthClientType
 import dev.ehr.identity.Organization
 import dev.ehr.identity.OrganizationId
 import dev.ehr.identity.OrganizationRepository
@@ -51,11 +52,12 @@ class JwtPrincipalAuthenticationConverter(
         ) ?: invalidToken("JWT subject is not an active member of the organization")
         val roles = membershipRepository.findRoles(TenantScope(organization.id), membership.id)
         val scopes = extractScopes(jwt)
+        val clientId = validateUserClient(parseOptionalClientId(jwt), organization)
         val principal = SecurityPrincipal(
             subject = AuthenticatedSubject(
                 externalSubject = externalSubject,
                 userId = user.id,
-                clientId = parseOptionalClientId(jwt),
+                clientId = clientId,
                 scopes = scopes,
                 launchPatientId = jwt.getClaimAsString(JwtClaimNames.LAUNCH_PATIENT)
                     ?.let { parseUuid(it, "JWT launch patient is not a UUID") },
@@ -87,6 +89,9 @@ class JwtPrincipalAuthenticationConverter(
         if (client.status != OAuthClientStatus.ACTIVE) {
             invalidToken("Client is not active")
         }
+        if (client.clientType != OAuthClientType.SYSTEM) {
+            invalidToken("JWT subject is not a system client")
+        }
         val organization = client.organizationId?.let { organizationRepository.findById(it) }
             ?: invalidToken("Client is not linked to an organization")
         if (organization.status != OrganizationStatus.ACTIVE) {
@@ -111,6 +116,31 @@ class JwtPrincipalAuthenticationConverter(
         )
         val authorities = scopes.map { SimpleGrantedAuthority("SCOPE_${it.rawValue}") }
         return UsernamePasswordAuthenticationToken(principal, jwt, authorities)
+    }
+
+    private fun validateUserClient(
+        clientId: OAuthClientId?,
+        organization: Organization,
+    ): OAuthClientId? {
+        if (clientId == null) {
+            return null
+        }
+        val client = oauthClientRepository.findById(TenantScope(organization.id), clientId)
+            ?: invalidToken("JWT client is not linked to the organization")
+        if (client.status != OAuthClientStatus.ACTIVE) {
+            invalidToken("JWT client is not active")
+        }
+        if (client.clientType == OAuthClientType.SYSTEM) {
+            invalidToken("JWT client cannot issue user tokens")
+        }
+        if (!SmartScopeCompatibility.areAllowedForClientType(
+                SecurityScope.parse(client.grantedScopes),
+                client.clientType,
+            )
+        ) {
+            invalidToken("JWT client has incompatible SMART scope contexts")
+        }
+        return client.id
     }
 
     private fun resolveOrganization(jwt: Jwt): Organization {

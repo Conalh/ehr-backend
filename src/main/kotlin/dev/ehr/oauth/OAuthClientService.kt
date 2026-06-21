@@ -12,6 +12,7 @@ import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
 import dev.ehr.security.tenantScope
 import dev.ehr.security.SecurityScope
+import dev.ehr.security.SmartScopeCompatibility
 import dev.ehr.security.SmartScope
 import org.springframework.dao.DuplicateKeyException
 import org.springframework.http.HttpStatus
@@ -61,6 +62,12 @@ class OAuthClientService(
         }
         if (invalidScope) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Granted scopes must be valid SMART or OIDC scopes")
+        }
+        if (!SmartScopeCompatibility.areAllowedForClientType(SecurityScope.parse(normalizedScopes), clientType)) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "SMART scope context is not allowed for this client type",
+            )
         }
         // Redirect URIs are optional at registration: a client without one is
         // a directory entry that simply cannot run the authorization-code

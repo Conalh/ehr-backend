@@ -176,9 +176,7 @@ class PolicyEvaluator(
         operation: PolicyOperation,
     ): Boolean {
         val smartScope = SmartScope.parse(scope.rawValue) ?: return false
-        // Patient-context scopes authorize only inside a patient launch;
-        // without launch context they fail closed.
-        if (smartScope.context == SmartContext.PATIENT && principal.subject.launchPatientId == null) {
+        if (!SmartScopeCompatibility.isCompatibleWithPrincipal(smartScope, principal)) {
             return false
         }
         val resourceCovered = if (rule.requiresWildcardResource) {

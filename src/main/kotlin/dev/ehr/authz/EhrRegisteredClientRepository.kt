@@ -1,9 +1,12 @@
 package dev.ehr.authz
 
 import dev.ehr.identity.OAuthClient
+import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientRepository
 import dev.ehr.identity.OAuthClientStatus
 import dev.ehr.identity.OAuthClientType
+import dev.ehr.security.SecurityScope
+import dev.ehr.security.SmartScopeCompatibility
 import org.springframework.security.oauth2.core.AuthorizationGrantType
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod
 import org.springframework.security.oauth2.server.authorization.client.RegisteredClient
@@ -12,6 +15,7 @@ import org.springframework.security.oauth2.server.authorization.settings.ClientS
 import org.springframework.security.oauth2.server.authorization.settings.TokenSettings
 import org.springframework.stereotype.Component
 import java.time.Duration
+import java.util.UUID
 
 /**
  * Adapts oauth_clients to the authorization server. Clients are managed only
@@ -29,11 +33,22 @@ class EhrRegisteredClientRepository(
         throw UnsupportedOperationException("Clients are managed via the registration API")
     }
 
-    override fun findById(id: String): RegisteredClient? = null
+    override fun findById(id: String): RegisteredClient? {
+        val clientId = runCatching { OAuthClientId(UUID.fromString(id)) }.getOrNull() ?: return null
+        val client = oauthClientRepository.findById(clientId) ?: return null
+        return registeredClient(client)
+    }
 
     override fun findByClientId(clientId: String): RegisteredClient? {
         val client = oauthClientRepository.findByClientIdentifier(clientId) ?: return null
+        return registeredClient(client)
+    }
+
+    private fun registeredClient(client: OAuthClient): RegisteredClient? {
         if (client.status != OAuthClientStatus.ACTIVE) {
+            return null
+        }
+        if (!SmartScopeCompatibility.areAllowedForClientType(SecurityScope.parse(client.grantedScopes), client.clientType)) {
             return null
         }
         return when (client.clientType) {
