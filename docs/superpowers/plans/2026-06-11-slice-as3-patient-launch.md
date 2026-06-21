@@ -12,17 +12,19 @@ patient through the compartment plumbing H2 built.
 
 1. **Picker placement.** A filter in the AS chain intercepts authenticated
    `GET /oauth/authorize` requests whose scope includes `launch/patient` and
-   redirects to `/launch/patient-picker` until a patient is selected
-   (session-scoped). The picker lists the user's organization's synthetic
-   patients; the POST validates org ownership and bounces back to the
+   redirects to `/launch/patient-picker` until a patient is selected for that
+   authorize transaction. The picker lists the user's organization's
+   synthetic patients; the POST validates org ownership, binds the selection
+   to the transaction id/client/scopes/state, and bounces back to the
    original authorize URL. Plain server-rendered HTML, like the dev login.
 2. **Context transport.** Token issuance is back-channel (no session), so the
    selection rides in the `OAuth2Authorization`: a delegating
-   `OAuth2AuthorizationService` stamps the session's selected patient as an
-   authorization attribute at code-issuance time (request thread). The token
-   customizer copies it into an `ehr_patient` access-token claim, and the
-   token response gains the SMART `patient` parameter via a custom
-   access-token response handler.
+   `OAuth2AuthorizationService` stamps the request-scoped selected patient
+   as an authorization attribute at code-issuance time. The selection is
+   consumed when the authorize request resumes, so later launches require a
+   fresh explicit choice. The token customizer copies it into an
+   `ehr_patient` access-token claim, and the token response gains the SMART
+   `patient` parameter via a custom access-token response handler.
 3. **The binding rule** (evaluator, `policy-spine-v20`): patient-context
    scopes stop failing closed — they authorize a rule's resource/direction
    only when the principal carries launch context. When **all** authorizing

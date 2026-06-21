@@ -75,9 +75,9 @@ and audited with `purpose_of_use = 'ETREAT'`, `relationship_basis =
 
 The embedded Spring Authorization Server is the primary authentication path:
 `/oauth/authorize` (authorization code + PKCE, with the synthetic patient
-launch picker), `/oauth/token`, `/oauth/revoke`, JWKS, and
-`/.well-known/smart-configuration`. The dev login page accepts any active user
-with the shared `ehr.security.dev-login-password` (users carry no credentials —
+launch picker; one selected patient per authorize transaction), `/oauth/token`,
+`/oauth/revoke`, JWKS, and `/.well-known/smart-configuration`. The dev login
+page accepts any active user with the shared `ehr.security.dev-login-password` (users carry no credentials —
 synthetic data, no IdP); identity is always re-resolved from the database on
 every request, so revoking a client kills its live tokens immediately.
 

@@ -94,8 +94,11 @@ Phased:
    token with PKCE, `openid fhirUser` id_token. Unlocks the practitioner-app
    Inferno group.
 2. **Standalone patient launch**: a deliberately plain patient-picker page at
-   authorize-time (synthetic data only); token response carries `patient=`
-   launch context, and **patient-context scopes finally authorize**: the
+   authorize-time (synthetic data only). The selected patient is bound to one
+   authorize transaction (transaction id, client, requested scopes, and
+   `state`) and consumed when that request resumes; a later request must make
+   a fresh selection. The token response carries `patient=` launch context,
+   and **patient-context scopes finally authorize**: the
    policy spine's `SmartScope` patient-context branch stops failing closed
    and instead constrains the compartment to the launched patient — note the
    compartment plumbing from H2 (patientId on every request) is exactly the
