@@ -75,15 +75,20 @@ class CareTeamService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<CareTeamMembership> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read care teams",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read care teams",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val members = careTeamRepository.findActiveByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

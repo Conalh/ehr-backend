@@ -188,15 +188,20 @@ class DiagnosticReportService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<DiagnosticReport> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read diagnostic reports",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read diagnostic reports",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val reports = diagnosticReportRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

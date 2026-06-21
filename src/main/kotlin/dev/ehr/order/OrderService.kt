@@ -118,15 +118,20 @@ class OrderService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Order> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read orders",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read orders",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val orders = orderRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

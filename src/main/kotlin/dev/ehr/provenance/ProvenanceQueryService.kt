@@ -113,10 +113,11 @@ class ProvenanceQueryService(
         principal: SecurityPrincipal,
         patientId: UUID,
     ): List<ProvenanceEvent> {
-        val decision = authorize(principal, patientId = patientId)
+        val visibilityDecision = authorize(principal)
 
         val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, PatientId(patientId), decision)
+        patientAccessGuard.requirePatientForSearch(scope, PatientId(patientId), visibilityDecision)
+        val decision = authorize(principal, patientId = patientId)
 
         val events = provenanceRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

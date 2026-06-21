@@ -114,15 +114,20 @@ class AllergyService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Allergy> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read allergies",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read allergies",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val allergies = allergyRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

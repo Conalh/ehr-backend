@@ -119,15 +119,20 @@ class MedicationStatementService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<MedicationStatement> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read medication statements",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read medication statements",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val statements = medicationStatementRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

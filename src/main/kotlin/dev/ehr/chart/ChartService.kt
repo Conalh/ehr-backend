@@ -52,6 +52,23 @@ class ChartService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): PatientChart {
+        val visibilityDecision = accessAuthorizer.authorize(
+            principal = principal,
+            resourceType = PolicyResourceType.CHART,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read patient charts",
+        )
+
+        val scope = principal.tenantScope()
+        val patient = patientRepository.findById(scope, patientId)
+        if (patient == null) {
+            auditEventService.recordFailedAccess(
+                decision = visibilityDecision,
+                operation = AuditOperation.READ,
+                resourceId = patientId.value,
+            )
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
+        }
         val decision = accessAuthorizer.authorize(
             principal = principal,
             resourceType = PolicyResourceType.CHART,
@@ -59,17 +76,6 @@ class ChartService(
             forbiddenMessage = "Not authorized to read patient charts",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        val patient = patientRepository.findById(scope, patientId)
-        if (patient == null) {
-            auditEventService.recordFailedAccess(
-                decision = decision,
-                operation = AuditOperation.READ,
-                resourceId = patientId.value,
-            )
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
-        }
 
         val chart = PatientChart(
             patient = PatientWithIdentifiers(patient, patientRepository.findIdentifiers(scope, patient.id)),

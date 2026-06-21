@@ -225,15 +225,20 @@ class ClinicalNoteService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<ClinicalNote> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read clinical notes",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read clinical notes",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val notes = clinicalNoteRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

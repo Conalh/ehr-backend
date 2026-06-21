@@ -128,15 +128,20 @@ class EncounterService(
         principal: SecurityPrincipal,
         patientId: PatientId,
     ): List<Encounter> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read encounters",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read encounters",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val encounters = encounterRepository.findByPatient(scope, patientId)
         auditEventService.recordSuccessfulAccess(

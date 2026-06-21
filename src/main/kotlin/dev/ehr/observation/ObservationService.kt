@@ -200,15 +200,20 @@ class ObservationService(
         patientId: PatientId,
         category: ObservationCategory? = null,
     ): List<Observation> {
+        val visibilityDecision = authorize(
+            principal = principal,
+            operation = PolicyOperation.READ,
+            forbiddenMessage = "Not authorized to read observations",
+        )
+
+        val scope = principal.tenantScope()
+        patientAccessGuard.requirePatientForSearch(scope, patientId, visibilityDecision)
         val decision = authorize(
             principal = principal,
             operation = PolicyOperation.READ,
             forbiddenMessage = "Not authorized to read observations",
             patientId = patientId.value,
         )
-
-        val scope = principal.tenantScope()
-        patientAccessGuard.requirePatientForSearch(scope, patientId, decision)
 
         val observations = observationRepository.findByPatient(scope, patientId, category)
         auditEventService.recordSuccessfulAccess(

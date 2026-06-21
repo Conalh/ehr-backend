@@ -133,6 +133,28 @@ class CompartmentEnforcementIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `enforced patient scoped searches prove tenant visibility before relationship denial`() {
+        val correlationId = "enf-cross-patient-${UUID.randomUUID()}"
+        val member = createMember(MembershipRole.CLINICIAN)
+        val otherMember = createMember(MembershipRole.CLINICIAN)
+        val otherPatient = createPatient(otherMember.organization)
+        setEnforcement(member.organization, "enforced")
+
+        mockMvc.get("/api/v1/patients/${otherPatient.id.value}/conditions") {
+            header("Authorization", "Bearer ${member.token}")
+            header("X-Correlation-Id", correlationId)
+        }.andExpect {
+            status { isNotFound() }
+        }
+
+        val audit = auditRow(correlationId)
+        assertEquals("SEARCH", audit.operation)
+        assertEquals("FAILURE", audit.outcome)
+        assertEquals("ALLOWED", audit.policyReasonCode)
+        assertEquals(null, audit.relationshipBasis)
+    }
+
+    @Test
     fun `break-glass permits an emergency read with full audit evidence`() {
         val breakGlassCorrelationId = "enf-bg-${UUID.randomUUID()}"
         val member = createMember(MembershipRole.CLINICIAN)
