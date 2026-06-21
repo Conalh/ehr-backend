@@ -2,7 +2,7 @@ package dev.ehr.medication
 
 import dev.ehr.encounter.EncounterId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -32,7 +31,7 @@ class MedicationStatementController(
         @PathVariable patientId: UUID,
         @Valid @RequestBody request: RecordMedicationStatementRequest,
     ): MedicationStatementResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return medicationStatementService.record(
             principal = principal,
             command = MedicationStatementCreateCommand(
@@ -55,7 +54,7 @@ class MedicationStatementController(
         @PathVariable medicationStatementId: UUID,
     ): MedicationStatementResponse =
         medicationStatementService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             medicationStatementId = MedicationStatementId(medicationStatementId),
         ).toResponse()
 
@@ -66,14 +65,11 @@ class MedicationStatementController(
     ): MedicationStatementListResponse =
         MedicationStatementListResponse(
             medicationStatements = medicationStatementService.listForPatient(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class RecordMedicationStatementRequest(

@@ -1,19 +1,16 @@
 package dev.ehr.security
 
-import org.springframework.http.HttpStatus
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 
 @RestController
 @RequestMapping("/api/v1/security")
 class CurrentSecurityController {
     @GetMapping("/whoami")
     fun whoami(authentication: Authentication): CurrentSecurityResponse {
-        val principal = authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
+        val principal = authentication.securityPrincipal()
 
         return CurrentSecurityResponse(
             externalSubject = principal.subject.externalSubject,

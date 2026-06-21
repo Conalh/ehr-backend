@@ -2,7 +2,7 @@ package dev.ehr.order
 
 import dev.ehr.encounter.EncounterId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -30,7 +29,7 @@ class OrderController(
         authentication: Authentication,
         @Valid @RequestBody request: PlaceOrderRequest,
     ): OrderResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return orderService.place(
             principal = principal,
             command = OrderCreateCommand(
@@ -50,7 +49,7 @@ class OrderController(
         @PathVariable orderId: UUID,
     ): OrderResponse =
         orderService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             orderId = OrderId(orderId),
         ).toResponse()
 
@@ -61,7 +60,7 @@ class OrderController(
     ): OrderListResponse =
         OrderListResponse(
             orders = orderService.listForPatient(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
@@ -72,7 +71,7 @@ class OrderController(
         @PathVariable orderId: UUID,
         @Valid @RequestBody request: TransitionOrderRequest,
     ): OrderResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return orderService.transition(
             principal = principal,
             orderId = OrderId(orderId),
@@ -84,9 +83,6 @@ class OrderController(
         ).toResponse()
     }
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class PlaceOrderRequest(

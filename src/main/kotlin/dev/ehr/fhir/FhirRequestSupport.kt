@@ -2,18 +2,16 @@ package dev.ehr.fhir
 
 import dev.ehr.patient.PatientId
 import dev.ehr.security.SecurityPrincipal
-import org.springframework.http.HttpStatus
+import dev.ehr.security.securityPrincipal
 import org.springframework.security.core.Authentication
 import org.springframework.stereotype.Component
-import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 import java.util.UUID
 
 @Component
 class FhirRequestSupport {
     fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
+        authentication.securityPrincipal()
 
     fun parsePatientParam(patient: String?): PatientId? {
         if (patient.isNullOrBlank()) {

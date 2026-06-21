@@ -1,6 +1,6 @@
 package dev.ehr.patient
 
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -30,7 +30,7 @@ class PatientController(
         authentication: Authentication,
         @Valid @RequestBody request: CreatePatientRequest,
     ): PatientResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return patientService.create(
             principal = principal,
             command = PatientCreateCommand(
@@ -61,7 +61,7 @@ class PatientController(
         @PathVariable patientId: UUID,
     ): PatientResponse =
         patientService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             patientId = PatientId(patientId),
         ).toResponse()
 
@@ -76,16 +76,13 @@ class PatientController(
         }
         return PatientSearchResponse(
             patients = patientService.searchByIdentifier(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 system = identifierSystem,
                 value = identifierValue,
             ).map { it.toResponse() },
         )
     }
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class CreatePatientRequest(

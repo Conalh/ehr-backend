@@ -3,7 +3,7 @@ package dev.ehr.oauth
 import dev.ehr.identity.OAuthClient
 import dev.ehr.identity.OAuthClientId
 import dev.ehr.identity.OAuthClientType
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -31,7 +30,7 @@ class OAuthClientController(
         @Valid @RequestBody request: RegisterOAuthClientRequest,
     ): OAuthClientResponse {
         val registered = oauthClientService.register(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             clientIdentifier = request.clientIdentifier,
             displayName = request.displayName,
             clientType = request.clientType ?: OAuthClientType.PUBLIC,
@@ -48,14 +47,14 @@ class OAuthClientController(
         @PathVariable clientId: UUID,
     ): OAuthClientResponse =
         oauthClientService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             clientId = OAuthClientId(clientId),
         ).toResponse()
 
     @GetMapping
     fun list(authentication: Authentication): OAuthClientListResponse =
         OAuthClientListResponse(
-            clients = oauthClientService.list(securityPrincipal(authentication)).map { it.toResponse() },
+            clients = oauthClientService.list(authentication.securityPrincipal()).map { it.toResponse() },
         )
 
     @PostMapping("/{clientId}/revoke")
@@ -64,13 +63,10 @@ class OAuthClientController(
         @PathVariable clientId: UUID,
     ): OAuthClientResponse =
         oauthClientService.revoke(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             clientId = OAuthClientId(clientId),
         ).toResponse()
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class RegisterOAuthClientRequest(

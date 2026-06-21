@@ -1,6 +1,6 @@
 package dev.ehr.export
 
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import org.springframework.core.io.FileSystemResource
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 import java.time.Instant
 import java.util.UUID
@@ -25,7 +24,7 @@ class ExportController(
 ) {
     @PostMapping
     fun request(authentication: Authentication): ResponseEntity<ExportJobResponse> {
-        val job = exportService.request(securityPrincipal(authentication))
+        val job = exportService.request(authentication.securityPrincipal())
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(job.toResponse(emptyList()))
     }
 
@@ -34,7 +33,7 @@ class ExportController(
         authentication: Authentication,
         @PathVariable jobId: UUID,
     ): ExportJobResponse {
-        val (job, files) = exportService.status(securityPrincipal(authentication), jobId)
+        val (job, files) = exportService.status(authentication.securityPrincipal(), jobId)
         return job.toResponse(files)
     }
 
@@ -44,15 +43,11 @@ class ExportController(
         @PathVariable jobId: UUID,
         @PathVariable resourceType: String,
     ): ResponseEntity<FileSystemResource> {
-        val path = exportService.download(securityPrincipal(authentication), jobId, resourceType)
+        val path = exportService.download(authentication.securityPrincipal(), jobId, resourceType)
         return ResponseEntity.ok()
             .contentType(MediaType.parseMediaType(FHIR_NDJSON))
             .body(FileSystemResource(path))
     }
-
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 
     private fun ExportJob.toResponse(files: List<ExportJobFile>): ExportJobResponse =
         ExportJobResponse(

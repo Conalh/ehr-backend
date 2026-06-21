@@ -1,7 +1,7 @@
 package dev.ehr.encounter
 
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -30,7 +29,7 @@ class EncounterController(
         @PathVariable patientId: UUID,
         @Valid @RequestBody request: OpenEncounterRequest,
     ): EncounterResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return encounterService.open(
             principal = principal,
             patientId = PatientId(patientId),
@@ -51,7 +50,7 @@ class EncounterController(
         @PathVariable encounterId: UUID,
     ): EncounterResponse =
         encounterService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             encounterId = EncounterId(encounterId),
         ).toResponse()
 
@@ -62,7 +61,7 @@ class EncounterController(
     ): EncounterListResponse =
         EncounterListResponse(
             encounters = encounterService.timeline(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
@@ -73,7 +72,7 @@ class EncounterController(
         @PathVariable encounterId: UUID,
         @Valid @RequestBody request: TransitionEncounterRequest,
     ): EncounterResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return encounterService.transition(
             principal = principal,
             encounterId = EncounterId(encounterId),
@@ -86,9 +85,6 @@ class EncounterController(
         ).toResponse()
     }
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class OpenEncounterRequest(

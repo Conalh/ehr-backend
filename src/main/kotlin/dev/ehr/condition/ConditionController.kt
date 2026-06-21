@@ -2,7 +2,7 @@ package dev.ehr.condition
 
 import dev.ehr.encounter.EncounterId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -33,7 +32,7 @@ class ConditionController(
         @PathVariable patientId: UUID,
         @Valid @RequestBody request: RecordConditionRequest,
     ): ConditionResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return conditionService.record(
             principal = principal,
             command = ConditionCreateCommand(
@@ -57,7 +56,7 @@ class ConditionController(
         @Valid @RequestBody request: UpdateConditionRequest,
     ): ConditionResponse =
         conditionService.update(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             conditionId = ConditionId(conditionId),
             clinicalStatus = request.clinicalStatus,
             verificationStatus = request.verificationStatus,
@@ -72,7 +71,7 @@ class ConditionController(
         @PathVariable conditionId: UUID,
     ): ConditionResponse =
         conditionService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             conditionId = ConditionId(conditionId),
         ).toResponse()
 
@@ -83,14 +82,11 @@ class ConditionController(
     ): ConditionListResponse =
         ConditionListResponse(
             conditions = conditionService.problemList(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class RecordConditionRequest(

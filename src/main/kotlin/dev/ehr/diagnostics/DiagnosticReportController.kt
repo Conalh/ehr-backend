@@ -4,7 +4,7 @@ import dev.ehr.encounter.EncounterId
 import dev.ehr.observation.ObservationId
 import dev.ehr.order.OrderId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotEmpty
@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -35,7 +34,7 @@ class DiagnosticReportController(
         @Valid @RequestBody request: AttachResultRequest,
     ): DiagnosticReportResponse =
         diagnosticReportService.attachResult(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             orderId = OrderId(orderId),
             codeConceptId = CodeableConceptId(request.codeConceptId!!),
             resultObservationIds = request.resultObservationIds.map(::ObservationId),
@@ -49,7 +48,7 @@ class DiagnosticReportController(
         @PathVariable reportId: UUID,
     ): DiagnosticReportResponse =
         diagnosticReportService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             reportId = DiagnosticReportId(reportId),
         ).toResponse()
 
@@ -60,14 +59,11 @@ class DiagnosticReportController(
     ): DiagnosticReportListResponse =
         DiagnosticReportListResponse(
             diagnosticReports = diagnosticReportService.listForPatient(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class AttachResultRequest(

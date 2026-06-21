@@ -2,7 +2,7 @@ package dev.ehr.note
 
 import dev.ehr.encounter.EncounterId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -34,7 +33,7 @@ class ClinicalNoteController(
         @Valid @RequestBody request: WriteNoteRequest,
     ): ClinicalNoteResponse =
         clinicalNoteService.write(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             encounterId = EncounterId(encounterId),
             typeConceptId = CodeableConceptId(request.typeConceptId!!),
             title = request.title,
@@ -48,7 +47,7 @@ class ClinicalNoteController(
         @Valid @RequestBody request: AmendNoteRequest,
     ): ClinicalNoteResponse =
         clinicalNoteService.amend(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             noteId = ClinicalNoteId(noteId),
             title = request.title,
             contentText = request.contentText,
@@ -61,7 +60,7 @@ class ClinicalNoteController(
         @PathVariable noteId: UUID,
     ): ClinicalNoteResponse =
         clinicalNoteService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             noteId = ClinicalNoteId(noteId),
         ).toResponse()
 
@@ -72,14 +71,11 @@ class ClinicalNoteController(
     ): ClinicalNoteListResponse =
         ClinicalNoteListResponse(
             notes = clinicalNoteService.listForPatient(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class WriteNoteRequest(

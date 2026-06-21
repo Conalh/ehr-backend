@@ -2,7 +2,7 @@ package dev.ehr.careteam
 
 import dev.ehr.identity.UserId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpStatus
@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -31,7 +30,7 @@ class CareTeamController(
         @Valid @RequestBody request: AddCareTeamMemberRequest,
     ): CareTeamMembershipResponse =
         careTeamService.addMember(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             patientId = PatientId(patientId),
             userId = UserId(request.userId!!),
             role = request.role ?: CareTeamRole.CARE_TEAM,
@@ -44,7 +43,7 @@ class CareTeamController(
     ): CareTeamListResponse =
         CareTeamListResponse(
             members = careTeamService.listForPatient(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
             ).map { it.toResponse() },
         )
@@ -55,13 +54,10 @@ class CareTeamController(
         @PathVariable membershipId: UUID,
     ): CareTeamMembershipResponse =
         careTeamService.endMembership(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             membershipId = CareTeamMembershipId(membershipId),
         ).toResponse()
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class AddCareTeamMemberRequest(

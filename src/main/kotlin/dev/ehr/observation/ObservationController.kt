@@ -2,7 +2,7 @@ package dev.ehr.observation
 
 import dev.ehr.encounter.EncounterId
 import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
+import dev.ehr.security.securityPrincipal
 import dev.ehr.terminology.CodeableConceptId
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
@@ -33,7 +33,7 @@ class ObservationController(
         @PathVariable patientId: UUID,
         @Valid @RequestBody request: RecordObservationRequest,
     ): ObservationResponse {
-        val principal = securityPrincipal(authentication)
+        val principal = authentication.securityPrincipal()
         return observationService.record(
             principal = principal,
             command = ObservationCreateCommand(
@@ -57,7 +57,7 @@ class ObservationController(
         @Valid @RequestBody request: AmendObservationRequest,
     ): ObservationResponse =
         observationService.amend(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             observationId = ObservationId(observationId),
             newValue = request.toObservationValue(),
             expectedVersion = request.expectedVersion!!,
@@ -69,7 +69,7 @@ class ObservationController(
         @PathVariable observationId: UUID,
     ): ObservationResponse =
         observationService.get(
-            principal = securityPrincipal(authentication),
+            principal = authentication.securityPrincipal(),
             observationId = ObservationId(observationId),
         ).toResponse()
 
@@ -81,15 +81,12 @@ class ObservationController(
     ): ObservationListResponse =
         ObservationListResponse(
             observations = observationService.listForPatient(
-                principal = securityPrincipal(authentication),
+                principal = authentication.securityPrincipal(),
                 patientId = PatientId(patientId),
                 category = category,
             ).map { it.toResponse() },
         )
 
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
 }
 
 data class QuantityValueRequest(

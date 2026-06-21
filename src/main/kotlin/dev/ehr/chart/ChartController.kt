@@ -15,14 +15,12 @@ import dev.ehr.observation.toResponse
 import dev.ehr.patient.PatientId
 import dev.ehr.patient.PatientResponse
 import dev.ehr.patient.toResponse
-import dev.ehr.security.SecurityPrincipal
-import org.springframework.http.HttpStatus
+import dev.ehr.security.securityPrincipal
 import org.springframework.security.core.Authentication
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @RestController
@@ -35,8 +33,7 @@ class ChartController(
         authentication: Authentication,
         @PathVariable patientId: UUID,
     ): PatientChartResponse {
-        val principal = authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
+        val principal = authentication.securityPrincipal()
         val chart = chartService.chart(principal, PatientId(patientId))
         return PatientChartResponse(
             patient = chart.patient.toResponse(),
