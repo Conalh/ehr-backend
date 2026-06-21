@@ -9,7 +9,6 @@ import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.PolicyOperation
@@ -70,10 +69,9 @@ class EncounterService(
                     targetResourceType = "ENCOUNTER",
                     targetResourceId = encounter.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = encounter.patientId.value,
                     resourceId = encounter.id.value,
                 )
@@ -100,10 +98,9 @@ class EncounterService(
 
         val encounter = encounterRepository.findById(principal.tenantScope(), encounterId)
         if (encounter == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = encounterId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Encounter not found")
@@ -118,10 +115,9 @@ class EncounterService(
             patientId = encounter.patientId.value,
             resourceId = encounter.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = encounter.patientId.value,
             resourceId = encounter.id.value,
         )
@@ -141,20 +137,18 @@ class EncounterService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val encounters = encounterRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return encounters
@@ -195,10 +189,9 @@ class EncounterService(
                     priorVersion = prior.version,
                     priorState = prior,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.UPDATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = encounter.patientId.value,
                     resourceId = encounter.id.value,
                 )
@@ -230,10 +223,9 @@ class EncounterService(
         decision: PolicyDecision,
         encounterId: EncounterId,
     ) {
-        auditEventService.recordResourceAccess(
+        auditEventService.recordFailedAccess(
             decision = decision,
             operation = AuditOperation.UPDATE,
-            outcome = AuditOutcome.FAILURE,
             resourceId = encounterId.value,
         )
     }

@@ -10,7 +10,6 @@ import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -60,10 +59,9 @@ class ObservationService(
                     targetResourceType = "OBSERVATION",
                     targetResourceId = observation.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = observation.patientId.value,
                     resourceId = observation.id.value,
                 )
@@ -119,10 +117,9 @@ class ObservationService(
                     priorState = prior,
                     activity = ProvenanceActivity.AMENDED,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
                     resourceId = updated.id.value,
                 )
@@ -150,10 +147,9 @@ class ObservationService(
         decision: PolicyDecision,
         resourceId: java.util.UUID,
     ) {
-        auditEventService.recordResourceAccess(
+        auditEventService.recordFailedAccess(
             decision = decision,
             operation = AuditOperation.UPDATE,
-            outcome = AuditOutcome.FAILURE,
             resourceId = resourceId,
         )
     }
@@ -173,10 +169,9 @@ class ObservationService(
 
         val observation = observationRepository.findById(principal.tenantScope(), observationId)
         if (observation == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = observationId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Observation not found")
@@ -191,10 +186,9 @@ class ObservationService(
             patientId = observation.patientId.value,
             resourceId = observation.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = observation.patientId.value,
             resourceId = observation.id.value,
         )
@@ -215,20 +209,18 @@ class ObservationService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val observations = observationRepository.findByPatient(scope, patientId, category)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return observations

@@ -7,7 +7,6 @@ import dev.ehr.provenance.ProvenanceActivity
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
@@ -61,10 +60,9 @@ class OrderService(
                     targetResourceType = "ORDER",
                     targetResourceId = order.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = order.patientId.value,
                     resourceId = order.id.value,
                 )
@@ -90,10 +88,9 @@ class OrderService(
 
         val order = orderRepository.findById(principal.tenantScope(), orderId)
         if (order == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = orderId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Order not found")
@@ -108,10 +105,9 @@ class OrderService(
             patientId = order.patientId.value,
             resourceId = order.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = order.patientId.value,
             resourceId = order.id.value,
         )
@@ -131,20 +127,18 @@ class OrderService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val orders = orderRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return orders
@@ -191,10 +185,9 @@ class OrderService(
                         ProvenanceActivity.UPDATED
                     },
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = order.patientId.value,
                     resourceId = order.id.value,
                 )
@@ -226,10 +219,9 @@ class OrderService(
         decision: PolicyDecision,
         orderId: UUID,
     ) {
-        auditEventService.recordResourceAccess(
+        auditEventService.recordFailedAccess(
             decision = decision,
             operation = AuditOperation.UPDATE,
-            outcome = AuditOutcome.FAILURE,
             resourceId = orderId,
         )
     }

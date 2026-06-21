@@ -10,7 +10,6 @@ import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -63,10 +62,9 @@ class ConditionService(
                     targetResourceType = "CONDITION",
                     targetResourceId = condition.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = condition.patientId.value,
                     resourceId = condition.id.value,
                 )
@@ -140,10 +138,9 @@ class ConditionService(
                     priorState = prior,
                     activity = if (voided) ProvenanceActivity.ENTERED_IN_ERROR else ProvenanceActivity.UPDATED,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
                     resourceId = updated.id.value,
                 )
@@ -169,10 +166,9 @@ class ConditionService(
         decision: PolicyDecision,
         resourceId: java.util.UUID,
     ) {
-        auditEventService.recordResourceAccess(
+        auditEventService.recordFailedAccess(
             decision = decision,
             operation = AuditOperation.UPDATE,
-            outcome = AuditOutcome.FAILURE,
             resourceId = resourceId,
         )
     }
@@ -192,10 +188,9 @@ class ConditionService(
 
         val condition = conditionRepository.findById(principal.tenantScope(), conditionId)
         if (condition == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = conditionId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Condition not found")
@@ -210,10 +205,9 @@ class ConditionService(
             patientId = condition.patientId.value,
             resourceId = condition.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = condition.patientId.value,
             resourceId = condition.id.value,
         )
@@ -233,20 +227,18 @@ class ConditionService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val conditions = conditionRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return conditions

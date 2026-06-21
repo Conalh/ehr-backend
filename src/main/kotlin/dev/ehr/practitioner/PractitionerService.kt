@@ -6,7 +6,6 @@ import dev.ehr.identity.PractitionerRepository
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -38,19 +37,17 @@ class PractitionerService(
             practitionerId,
         )
         if (practitioner == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = practitionerId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Practitioner not found")
         }
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             resourceId = practitioner.id.value,
         )
         return practitioner

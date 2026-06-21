@@ -18,7 +18,6 @@ import dev.ehr.patient.PatientWithIdentifiers
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -64,10 +63,9 @@ class ChartService(
         val scope = principal.tenantScope()
         val patient = patientRepository.findById(scope, patientId)
         if (patient == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
@@ -83,10 +81,9 @@ class ChartService(
             notes = clinicalNoteRepository.findByPatient(scope, patientId),
         )
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
             resourceId = patientId.value,
         )

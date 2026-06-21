@@ -7,7 +7,6 @@ import dev.ehr.identity.OAuthClientType
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -84,10 +83,9 @@ class OAuthClientService(
                     grantedScopes = normalizedScopes,
                     redirectUris = normalizedRedirectUris,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     resourceId = client.id.value,
                 )
                 RegisteredOAuthClient(client, clientSecret)
@@ -117,19 +115,17 @@ class OAuthClientService(
 
         val client = oauthClientRepository.findById(principal.tenantScope(), clientId)
         if (client == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = clientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found")
         }
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             resourceId = client.id.value,
         )
         return client
@@ -139,10 +135,9 @@ class OAuthClientService(
         val decision = authorize(principal, PolicyOperation.READ, "Not authorized to list clients")
 
         val clients = oauthClientRepository.findByOrganization(principal.tenantScope())
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
         )
         return clients
     }
@@ -156,10 +151,9 @@ class OAuthClientService(
         val scope = principal.tenantScope()
         val existing = oauthClientRepository.findById(scope, clientId)
         if (existing == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.UPDATE,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = clientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Client not found")
@@ -168,10 +162,9 @@ class OAuthClientService(
         return transactionTemplate.execute {
             val revoked = oauthClientRepository.revoke(scope, clientId)
                 ?: throw ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Client is already revoked")
-            auditEventService.recordResourceAccess(
+            auditEventService.recordSuccessfulAccess(
                 decision = decision,
                 operation = AuditOperation.UPDATE,
-                outcome = AuditOutcome.SUCCESS,
                 resourceId = revoked.id.value,
             )
             revoked

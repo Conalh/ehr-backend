@@ -5,7 +5,6 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -30,10 +29,9 @@ class ProvenanceQueryService(
 
         val event = provenanceRepository.findById(principal.tenantScope(), provenanceId)
         if (event == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = provenanceId,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Provenance not found")
@@ -46,10 +44,9 @@ class ProvenanceQueryService(
             patientId = event.patientId,
             resourceId = event.id,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = event.patientId,
             resourceId = event.id,
         )
@@ -76,10 +73,9 @@ class ProvenanceQueryService(
                 )
             }
             ?: decision
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId,
             resourceId = targetResourceId,
         )
@@ -105,10 +101,9 @@ class ProvenanceQueryService(
             targetResourceType,
             targetResourceIds,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId,
         )
         return events
@@ -122,20 +117,18 @@ class ProvenanceQueryService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, PatientId(patientId)) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val events = provenanceRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId,
         )
         return events

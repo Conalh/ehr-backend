@@ -3,7 +3,6 @@ package dev.ehr.export
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -30,10 +29,9 @@ class ExportService(
             organizationId = principal.organization.organizationId,
             requestedBy = principal.subject.userId,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.EXPORT,
-            outcome = AuditOutcome.SUCCESS,
             resourceId = job.id,
         )
         exportJobProcessor.processAsync(job)
@@ -49,19 +47,17 @@ class ExportService(
         val scope = principal.tenantScope()
         val job = exportJobRepository.findById(scope, jobId)
         if (job == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = jobId,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Export job not found")
         }
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             resourceId = job.id,
         )
         return job to exportJobRepository.findFiles(scope, jobId)
@@ -79,10 +75,9 @@ class ExportService(
             ?.let { exportJobRepository.findFiles(scope, jobId) }
             ?.singleOrNull { it.resourceType == resourceType }
         if (file == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.EXPORT,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = jobId,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Export file not found")
@@ -93,10 +88,9 @@ class ExportService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Export file is no longer available")
         }
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.EXPORT,
-            outcome = AuditOutcome.SUCCESS,
             resourceId = file.id,
         )
         return path

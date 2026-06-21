@@ -34,7 +34,36 @@ class AuditEventService(
         )
 
     @Transactional
-    fun recordResourceAccess(
+    fun recordSuccessfulAccess(
+        decision: PolicyDecision,
+        operation: AuditOperation,
+        patientId: UUID? = null,
+        resourceId: UUID? = null,
+    ): AuditEventRecord =
+        appendResourceAccess(
+            decision = decision,
+            operation = operation,
+            outcome = AuditOutcome.SUCCESS,
+            patientId = patientId,
+            resourceId = resourceId,
+        )
+
+    @Transactional
+    fun recordFailedAccess(
+        decision: PolicyDecision,
+        operation: AuditOperation,
+        patientId: UUID? = null,
+        resourceId: UUID? = null,
+    ): AuditEventRecord =
+        appendResourceAccess(
+            decision = decision,
+            operation = operation,
+            outcome = AuditOutcome.FAILURE,
+            patientId = patientId,
+            resourceId = resourceId,
+        )
+
+    private fun appendResourceAccess(
         decision: PolicyDecision,
         operation: AuditOperation,
         outcome: AuditOutcome,
@@ -108,7 +137,7 @@ class AuditEventService(
         patientId: UUID? = null,
         resourceId: UUID? = null,
     ): AuditEventRecord =
-        recordResourceAccess(
+        appendResourceAccess(
             decision = decision,
             operation = AuditOperation.AUTHORIZATION_DENIED,
             outcome = AuditOutcome.DENIED,

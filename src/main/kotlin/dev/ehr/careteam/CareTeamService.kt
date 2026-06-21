@@ -7,7 +7,6 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -57,10 +56,9 @@ class CareTeamService(
                     origin = CareTeamMembershipOrigin.EXPLICIT,
                     createdBy = principal.subject.userId,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = membership.patientId.value,
                     resourceId = membership.id.value,
                 )
@@ -86,20 +84,18 @@ class CareTeamService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val members = careTeamRepository.findActiveByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return members
@@ -119,10 +115,9 @@ class CareTeamService(
         val scope = principal.tenantScope()
         val existing = careTeamRepository.findById(scope, membershipId)
             ?: run {
-                auditEventService.recordResourceAccess(
+                auditEventService.recordFailedAccess(
                     decision = decision,
                     operation = AuditOperation.UPDATE,
-                    outcome = AuditOutcome.FAILURE,
                     resourceId = membershipId.value,
                 )
                 throw ResponseStatusException(HttpStatus.NOT_FOUND, "Membership not found")
@@ -141,10 +136,9 @@ class CareTeamService(
         return transactionTemplate.execute {
             val ended = careTeamRepository.end(scope, membershipId)
                 ?: throw ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Membership is already ended")
-            auditEventService.recordResourceAccess(
+            auditEventService.recordSuccessfulAccess(
                 decision = compartmentDecision,
                 operation = AuditOperation.UPDATE,
-                outcome = AuditOutcome.SUCCESS,
                 patientId = existing.patientId.value,
                 resourceId = ended.id.value,
             )

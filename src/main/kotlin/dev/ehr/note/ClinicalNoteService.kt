@@ -11,7 +11,6 @@ import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.CompartmentDeniedException
 import dev.ehr.security.PolicyDecision
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.security.SecurityPrincipal
@@ -82,10 +81,9 @@ class ClinicalNoteService(
                     targetResourceType = "NOTE",
                     targetResourceId = note.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = compartmentDecision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = note.patientId.value,
                     resourceId = note.id.value,
                 )
@@ -147,10 +145,9 @@ class ClinicalNoteService(
                     priorState = prior,
                     activity = ProvenanceActivity.AMENDED,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = compartmentDecision,
                     operation = AuditOperation.UPDATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = updated.patientId.value,
                     resourceId = updated.id.value,
                 )
@@ -176,10 +173,9 @@ class ClinicalNoteService(
         decision: PolicyDecision,
         resourceId: java.util.UUID,
     ) {
-        auditEventService.recordResourceAccess(
+        auditEventService.recordFailedAccess(
             decision = decision,
             operation = AuditOperation.UPDATE,
-            outcome = AuditOutcome.FAILURE,
             resourceId = resourceId,
         )
     }
@@ -199,10 +195,9 @@ class ClinicalNoteService(
 
         val note = clinicalNoteRepository.findById(principal.tenantScope(), noteId)
         if (note == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = noteId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Note not found")
@@ -217,10 +212,9 @@ class ClinicalNoteService(
             patientId = note.patientId.value,
             resourceId = note.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = note.patientId.value,
             resourceId = note.id.value,
         )
@@ -240,20 +234,18 @@ class ClinicalNoteService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val notes = clinicalNoteRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return notes

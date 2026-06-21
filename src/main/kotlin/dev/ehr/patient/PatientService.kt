@@ -3,7 +3,6 @@ package dev.ehr.patient
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
 import dev.ehr.provenance.ProvenanceRecorder
@@ -51,10 +50,9 @@ class PatientService(
                     targetResourceType = "PATIENT",
                     targetResourceId = patient.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = patient.id.value,
                     resourceId = patient.id.value,
                 )
@@ -80,19 +78,17 @@ class PatientService(
         if (patient == null) {
             // Existence is unconfirmed, so the requested UUID is recorded as the
             // resource only; patient_id stays null to keep compartment audit clean.
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patient.id.value,
             resourceId = patient.id.value,
         )
@@ -134,10 +130,9 @@ class PatientService(
             else -> null
         }
 
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patient?.id?.value,
             resourceId = patient?.id?.value,
         )

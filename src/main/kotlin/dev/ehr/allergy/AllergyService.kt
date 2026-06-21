@@ -6,7 +6,6 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
@@ -57,10 +56,9 @@ class AllergyService(
                     targetResourceType = "ALLERGY",
                     targetResourceId = allergy.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = allergy.patientId.value,
                     resourceId = allergy.id.value,
                 )
@@ -86,10 +84,9 @@ class AllergyService(
 
         val allergy = allergyRepository.findById(principal.tenantScope(), allergyId)
         if (allergy == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = allergyId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Allergy not found")
@@ -104,10 +101,9 @@ class AllergyService(
             patientId = allergy.patientId.value,
             resourceId = allergy.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = allergy.patientId.value,
             resourceId = allergy.id.value,
         )
@@ -127,20 +123,18 @@ class AllergyService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val allergies = allergyRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return allergies

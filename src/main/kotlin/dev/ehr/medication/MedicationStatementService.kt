@@ -6,7 +6,6 @@ import dev.ehr.patient.PatientRepository
 import dev.ehr.provenance.ProvenanceRecorder
 import dev.ehr.security.AuditEventService
 import dev.ehr.security.AuditOperation
-import dev.ehr.security.AuditOutcome
 import dev.ehr.security.AccessAuthorizer
 import dev.ehr.security.PolicyOperation
 import dev.ehr.security.PolicyResourceType
@@ -62,10 +61,9 @@ class MedicationStatementService(
                     targetResourceType = "MEDICATION",
                     targetResourceId = statement.id.value,
                 )
-                auditEventService.recordResourceAccess(
+                auditEventService.recordSuccessfulAccess(
                     decision = decision,
                     operation = AuditOperation.CREATE,
-                    outcome = AuditOutcome.SUCCESS,
                     patientId = statement.patientId.value,
                     resourceId = statement.id.value,
                 )
@@ -91,10 +89,9 @@ class MedicationStatementService(
 
         val statement = medicationStatementRepository.findById(principal.tenantScope(), medicationStatementId)
         if (statement == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.READ,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = medicationStatementId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Medication statement not found")
@@ -109,10 +106,9 @@ class MedicationStatementService(
             patientId = statement.patientId.value,
             resourceId = statement.id.value,
         )
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = compartmentDecision,
             operation = AuditOperation.READ,
-            outcome = AuditOutcome.SUCCESS,
             patientId = statement.patientId.value,
             resourceId = statement.id.value,
         )
@@ -132,20 +128,18 @@ class MedicationStatementService(
 
         val scope = principal.tenantScope()
         if (patientRepository.findById(scope, patientId) == null) {
-            auditEventService.recordResourceAccess(
+            auditEventService.recordFailedAccess(
                 decision = decision,
                 operation = AuditOperation.SEARCH,
-                outcome = AuditOutcome.FAILURE,
                 resourceId = patientId.value,
             )
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Patient not found")
         }
 
         val statements = medicationStatementRepository.findByPatient(scope, patientId)
-        auditEventService.recordResourceAccess(
+        auditEventService.recordSuccessfulAccess(
             decision = decision,
             operation = AuditOperation.SEARCH,
-            outcome = AuditOutcome.SUCCESS,
             patientId = patientId.value,
         )
         return statements
