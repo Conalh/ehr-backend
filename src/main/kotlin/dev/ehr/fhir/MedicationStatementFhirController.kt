@@ -3,8 +3,6 @@ package dev.ehr.fhir
 import dev.ehr.medication.MedicationStatement
 import dev.ehr.medication.MedicationStatementId
 import dev.ehr.medication.MedicationStatementService
-import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
 import dev.ehr.terminology.CodeableConcept
 import dev.ehr.terminology.CodeableConceptRepository
 import org.hl7.fhir.r4.model.Bundle
@@ -19,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
-import java.util.UUID
 
 @RestController
 @RequestMapping("/fhir/r4")
@@ -28,14 +25,15 @@ class MedicationStatementFhirController(
     private val medicationStatementFhirMapper: MedicationStatementFhirMapper,
     private val codeableConceptRepository: CodeableConceptRepository,
     private val responses: FhirResponseFactory,
+    private val requestSupport: FhirRequestSupport,
 ) {
     @GetMapping("/MedicationStatement/{id}", produces = [FHIR_JSON])
     fun read(
         authentication: Authentication,
         @PathVariable id: String,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val medicationStatementId = parseUuid(id)?.let(::MedicationStatementId)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val medicationStatementId = requestSupport.parseUuid(id)?.let(::MedicationStatementId)
             ?: return responses.operationOutcome(
                 HttpStatus.NOT_FOUND,
                 OperationOutcome.IssueType.NOTFOUND,
@@ -58,8 +56,8 @@ class MedicationStatementFhirController(
         authentication: Authentication,
         @RequestParam patient: String?,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val patientId = parsePatientParam(patient)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val patientId = requestSupport.parsePatientParam(patient)
             ?: return responses.operationOutcome(
                 HttpStatus.BAD_REQUEST,
                 OperationOutcome.IssueType.INVALID,
@@ -81,7 +79,7 @@ class MedicationStatementFhirController(
                     .toFhirMedicationStatement(statement, medicationConcept(statement))
                 bundle.addEntry(
                     Bundle.BundleEntryComponent()
-                        .setFullUrl(medicationStatementFullUrl(fhirStatement.idElement.idPart))
+                        .setFullUrl(requestSupport.resourceFullUrl("MedicationStatement", fhirStatement.idElement.idPart))
                         .setResource(fhirStatement)
                         .setSearch(
                             Bundle.BundleEntrySearchComponent()
@@ -98,24 +96,4 @@ class MedicationStatementFhirController(
     private fun medicationConcept(statement: MedicationStatement): CodeableConcept =
         codeableConceptRepository.findById(statement.medicationConceptId)
             ?: throw IllegalStateException("medication concept is missing")
-
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
-
-    private fun parsePatientParam(patient: String?): PatientId? {
-        if (patient.isNullOrBlank()) {
-            return null
-        }
-        return parseUuid(patient.removePrefix("Patient/"))?.let(::PatientId)
-    }
-
-    private fun parseUuid(value: String): UUID? =
-        runCatching { UUID.fromString(value) }.getOrNull()
-
-    private fun medicationStatementFullUrl(idPart: String): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/MedicationStatement/{id}")
-            .buildAndExpand(idPart)
-            .toUriString()
 }

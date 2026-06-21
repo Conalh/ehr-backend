@@ -3,8 +3,6 @@ package dev.ehr.fhir
 import dev.ehr.allergy.Allergy
 import dev.ehr.allergy.AllergyId
 import dev.ehr.allergy.AllergyService
-import dev.ehr.patient.PatientId
-import dev.ehr.security.SecurityPrincipal
 import dev.ehr.terminology.CodeableConcept
 import dev.ehr.terminology.CodeableConceptRepository
 import org.hl7.fhir.r4.model.Bundle
@@ -19,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder
-import java.util.UUID
 
 @RestController
 @RequestMapping("/fhir/r4")
@@ -30,14 +27,15 @@ class AllergyFhirController(
     private val provenanceQueryService: dev.ehr.provenance.ProvenanceQueryService,
     private val provenanceFhirMapper: ProvenanceFhirMapper,
     private val responses: FhirResponseFactory,
+    private val requestSupport: FhirRequestSupport,
 ) {
     @GetMapping("/AllergyIntolerance/{id}", produces = [FHIR_JSON])
     fun read(
         authentication: Authentication,
         @PathVariable id: String,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val allergyId = parseUuid(id)?.let(::AllergyId)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val allergyId = requestSupport.parseUuid(id)?.let(::AllergyId)
             ?: return responses.operationOutcome(
                 HttpStatus.NOT_FOUND,
                 OperationOutcome.IssueType.NOTFOUND,
@@ -61,8 +59,8 @@ class AllergyFhirController(
         @RequestParam patient: String?,
         @RequestParam(name = "_revinclude") revInclude: String?,
     ): ResponseEntity<String> {
-        val principal = securityPrincipal(authentication)
-        val patientId = parsePatientParam(patient)
+        val principal = requestSupport.securityPrincipal(authentication)
+        val patientId = requestSupport.parsePatientParam(patient)
             ?: return responses.operationOutcome(
                 HttpStatus.BAD_REQUEST,
                 OperationOutcome.IssueType.INVALID,
@@ -83,7 +81,7 @@ class AllergyFhirController(
                 val fhirAllergy = allergyFhirMapper.toFhirAllergyIntolerance(allergy, codeConcept(allergy))
                 bundle.addEntry(
                     Bundle.BundleEntryComponent()
-                        .setFullUrl(allergyFullUrl(fhirAllergy.idElement.idPart))
+                        .setFullUrl(requestSupport.resourceFullUrl("AllergyIntolerance", fhirAllergy.idElement.idPart))
                         .setResource(fhirAllergy)
                         .setSearch(
                             Bundle.BundleEntrySearchComponent()
@@ -100,7 +98,7 @@ class AllergyFhirController(
                 ).forEach { event ->
                     bundle.addEntry(
                         Bundle.BundleEntryComponent()
-                            .setFullUrl(provenanceFullUrl(event.id))
+                            .setFullUrl(requestSupport.resourceFullUrl("Provenance", event.id.toString()))
                             .setResource(provenanceFhirMapper.toFhirProvenance(event))
                             .setSearch(
                                 Bundle.BundleEntrySearchComponent()
@@ -118,30 +116,4 @@ class AllergyFhirController(
     private fun codeConcept(allergy: Allergy): CodeableConcept =
         codeableConceptRepository.findById(allergy.codeConceptId)
             ?: throw IllegalStateException("allergy code concept is missing")
-
-    private fun securityPrincipal(authentication: Authentication): SecurityPrincipal =
-        authentication.principal as? SecurityPrincipal
-            ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Security principal is not available")
-
-    private fun parsePatientParam(patient: String?): PatientId? {
-        if (patient.isNullOrBlank()) {
-            return null
-        }
-        return parseUuid(patient.removePrefix("Patient/"))?.let(::PatientId)
-    }
-
-    private fun parseUuid(value: String): UUID? =
-        runCatching { UUID.fromString(value) }.getOrNull()
-
-    private fun provenanceFullUrl(id: UUID): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/Provenance/{id}")
-            .buildAndExpand(id)
-            .toUriString()
-
-    private fun allergyFullUrl(idPart: String): String =
-        ServletUriComponentsBuilder.fromCurrentContextPath()
-            .path("/fhir/r4/AllergyIntolerance/{id}")
-            .buildAndExpand(idPart)
-            .toUriString()
 }
